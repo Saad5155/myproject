@@ -1,0 +1,15 @@
+<h1>Students</h1>
+<ul>
+    {% for student in students %}
+    <li><a href="{% url 'student_details' student.id %}">{{ student.name }}</a></li>
+    {% endfor %}
+</ul>
+
+<form method="post" action="{% url 'student_list' %}">
+    {% csrf_token %}
+    <input type="text" name="name" placeholder="Student name">
+    <!-- Add other fields as required -->
+    <input type="submit" value="Add Student">
+</form>
+
+<a href="{% url 'course_list' %}">Courses</a>
