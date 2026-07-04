@@ -5,6 +5,7 @@ import {
 } from 'recharts'
 import { Panel, ErrBox, LoadingSequence, SourceBadge } from './common'
 import TickerSearch from './TickerSearch'
+import PriceChart from './PriceChart'
 import { ScreenerChecklist } from './Screener'
 import { evaluateScreener } from '../lib/screener'
 import { money, num, pct, compact, moneyCompact, classFor, uid, stamp } from '../lib/format'
@@ -35,75 +36,6 @@ function ChartBox({ cap, children }) {
       <div className="cap">{cap}</div>
       <ResponsiveContainer width="100%" height="88%">{children}</ResponsiveContainer>
     </div>
-  )
-}
-
-function PriceChart({ symbol }) {
-  const [range, setRange] = useState('1Y')
-  const [data, setData] = useState(null)
-  const [busy, setBusy] = useState(false)
-
-  useEffect(() => {
-    let alive = true
-    setBusy(true)
-    fetch(`/api/history?symbol=${encodeURIComponent(symbol)}&range=${range}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => { if (alive) setData(j) })
-      .catch(() => {})
-      .finally(() => { if (alive) setBusy(false) })
-    return () => { alive = false }
-  }, [symbol, range])
-
-  const points = (data?.points || []).map((p) => ({ t: p.t, c: p.c }))
-  const first = points[0]?.c
-  const lastPt = points[points.length - 1]?.c
-  const chg = first && lastPt ? ((lastPt - first) / first) * 100 : null
-  const up = chg == null ? true : chg >= 0
-  const color = up ? CH.green : CH.red
-  const fmtDate = (t) => {
-    const d = new Date(t * 1000)
-    return range === '5Y' ? `'${String(d.getFullYear()).slice(-2)}` : d.toLocaleDateString('en-US', { month: 'short' })
-  }
-
-  return (
-    <>
-      <div className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <span>PRICE</span>
-        {chg != null && <span className={up ? 'up' : 'down'} style={{ fontSize: 12 }}>{pct(chg)} {range}</span>}
-        <span className="spacer" style={{ flex: 1 }} />
-        {['1Y', '5Y'].map((r) => (
-          <span key={r} onClick={() => setRange(r)}
-            style={{ cursor: 'pointer', fontSize: 11, padding: '1px 7px', border: '1px solid var(--grid-line)', color: range === r ? 'var(--amber)' : 'var(--text-dim)', background: range === r ? '#1a1200' : 'transparent' }}>
-            {r}
-          </span>
-        ))}
-      </div>
-      <div className="chartbox" style={{ height: 200 }}>
-        {points.length < 2 ? (
-          <div className="dim center" style={{ paddingTop: 70, fontSize: 12 }}>
-            {busy ? 'loading price history…' : 'price history unavailable for this ticker'}
-          </div>
-        ) : (
-          <ResponsiveContainer width="100%" height="94%">
-            <AreaChart data={points} margin={{ top: 6, right: 6, left: 0, bottom: 0 }}>
-              <defs>
-                <linearGradient id="pxfill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={color} stopOpacity={0.35} />
-                  <stop offset="100%" stopColor={color} stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid stroke={CH.grid} vertical={false} />
-              <XAxis dataKey="t" tickFormatter={fmtDate} stroke={CH.text} tick={{ fontSize: 10 }} minTickGap={28} />
-              <YAxis stroke={CH.text} tick={{ fontSize: 9 }} width={44} domain={['auto', 'auto']}
-                tickFormatter={(v) => '$' + Math.round(v)} />
-              <Tooltip {...chartTooltip()} labelFormatter={(t) => new Date(t * 1000).toLocaleDateString()}
-                formatter={(v) => [money(v), 'Close']} />
-              <Area type="monotone" dataKey="c" stroke={color} strokeWidth={2} fill="url(#pxfill)" dot={false} />
-            </AreaChart>
-          </ResponsiveContainer>
-        )}
-      </div>
-    </>
   )
 }
 

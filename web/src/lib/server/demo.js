@@ -410,9 +410,9 @@ export function demoMovers() {
 }
 
 export function demoHistory(sym, range) {
-  const n = range === '5Y' ? 60 : 52
+  const n = range === '5Y' ? 60 : range === '1M' ? 22 : 52
   const base = (DEMO_QUOTES[sym]?.price) || (80 + (sym.charCodeAt(0) % 40) * 3)
-  const step = range === '5Y' ? 2592000 : 604800 // month / week in seconds
+  const step = range === '5Y' ? 2592000 : range === '1M' ? 86400 : 604800 // month / day / week in seconds
   const end = Math.floor(Date.parse('2026-07-01T00:00:00Z') / 1000)
   const points = []
   for (let i = n - 1; i >= 0; i--) {

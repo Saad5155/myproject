@@ -526,12 +526,16 @@ async function getEcon() {
 // ---- price history (Yahoo Finance chart API — free, no key) ----
 export async function getPriceHistory(symbol, range = '1Y') {
   const sym = symbol.toUpperCase().trim()
-  const rng = range === '5Y' ? '5Y' : '1Y'
+  const rng = ['1M', '5Y', '1Y'].includes(range) ? range : '1Y'
   if (isDemo()) return demoHistory(sym, rng)
   const cacheKey = 'hist_' + rng
-  const cached = await cacheGet(sym, cacheKey, FUND_TTL_MS) // 24h
+  // 1M is intraday-ish daily data → cache 1h; 1Y/5Y change slowly → 24h.
+  const ttl = rng === '1M' ? 60 * 60 * 1000 : FUND_TTL_MS
+  const cached = await cacheGet(sym, cacheKey, ttl)
   if (cached) return { ...cached, cached: true }
-  const cfg = rng === '5Y' ? { range: '5y', interval: '1mo' } : { range: '1y', interval: '1wk' }
+  const cfg = rng === '5Y' ? { range: '5y', interval: '1mo' }
+    : rng === '1M' ? { range: '1mo', interval: '1d' }
+      : { range: '1y', interval: '1wk' }
   try {
     const r = await fetch(
       `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=${cfg.range}&interval=${cfg.interval}`,
