@@ -2,9 +2,17 @@
 import React, { useEffect, useState } from 'react'
 import { Modal, Spinner } from './common'
 import TickerSearch from './TickerSearch'
-import PriceChart, { Sparkline } from './PriceChart'
+import PriceChart, { IndexArea } from './PriceChart'
 import { getMarkets } from '../lib/dataEngine'
 import { num, pct, classFor } from '../lib/format'
+
+// Colored badge per index, TradingView-style.
+const IDX_BADGE = {
+  SPY: { t: '500', c: '#e5484d' }, QQQ: { t: '100', c: '#2f6bff' },
+  DIA: { t: '30', c: '#12b3c8' }, IWM: { t: '2K', c: '#a855f7' },
+}
+const badgeFor = (sym) => IDX_BADGE[sym] || { t: sym.slice(0, 3), c: '#2ba15f' }
+const unitFor = (sym) => (sym === 'QQQ' ? 'POINT' : 'USD')
 
 function MoverRow({ m, onPick, active }) {
   return (
@@ -69,17 +77,20 @@ export default function MarketsModal({ onClose, onSelect }) {
         <>
           <div className="section-title">INDICES</div>
           <div className="idx-grid" style={{ marginBottom: 10 }}>
-            {indices.map((it) => (
-              <div key={it.symbol} className={`idx-card ${sel === it.symbol ? 'row-active' : ''}`} onClick={() => chart(it.symbol)}>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                  <span className="dim" style={{ fontSize: 10 }}>{it.label}</span>
-                  <span className="spacer" style={{ flex: 1 }} />
-                  <span className={classFor(it.changePct)} style={{ fontSize: 11 }}>{it.changePct != null ? pct(it.changePct) : ''}</span>
+            {indices.map((it) => {
+              const b = badgeFor(it.symbol)
+              return (
+                <div key={it.symbol} className={`idx-card ${sel === it.symbol ? 'row-active' : ''}`} onClick={() => chart(it.symbol)}>
+                  <div className="idx-top">
+                    <span className="idx-badge" style={{ background: b.c }}>{b.t}</span>
+                    <span className="idx-name">{it.label}</span>
+                  </div>
+                  <div className="idx-price">{it.price != null ? num(it.price) : '—'} <span className="idx-unit">{unitFor(it.symbol)}</span></div>
+                  <div className={`idx-chg ${classFor(it.changePct)}`}>{it.changePct != null ? pct(it.changePct) : '—'} <span className="dim">today</span></div>
+                  <IndexArea symbol={it.symbol} up={(it.changePct ?? 0) >= 0} height={72} />
                 </div>
-                <div className="bold" style={{ fontSize: 15, margin: '1px 0 2px' }}>{it.price != null ? num(it.price) : '—'}</div>
-                <Sparkline symbol={it.symbol} height={30} width={140} />
-              </div>
-            ))}
+              )
+            })}
           </div>
         </>
       )}

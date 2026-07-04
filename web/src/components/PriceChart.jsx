@@ -1,6 +1,6 @@
 'use client'
 import React, { useState, useEffect } from 'react'
-import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceDot } from 'recharts'
 import { money, pct } from '../lib/format'
 
 const CH = { green: '#2bff88', amber: '#ffb000', red: '#ff3b5c', grid: '#143b1f', text: '#5f8f70' }
@@ -47,6 +47,36 @@ export function Sparkline({ symbol, range = '1M', height = 34, width = 96 }) {
             </linearGradient>
           </defs>
           <Area type="monotone" dataKey="c" stroke={color} strokeWidth={1.5} fill={`url(#${gid})`} dot={false} isAnimationActive={false} />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
+// TradingView-style card chart: a taller filled area with an end dot, no axes.
+// Direction color from `up` (day change) when given, else first→last.
+export function IndexArea({ symbol, up, range = '1M', height = 72 }) {
+  const { data } = useHistory(symbol, range)
+  const points = data?.points || []
+  if (points.length < 2) return <div style={{ height }} />
+  const rising = up != null ? up : points[points.length - 1].c >= points[0].c
+  const color = rising ? CH.green : CH.red
+  const last = points[points.length - 1]
+  const gid = `idx-${symbol}-${range}`.replace(/[^a-zA-Z0-9-]/g, '')
+  return (
+    <div style={{ height }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={points} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
+          <defs>
+            <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={color} stopOpacity={0.32} />
+              <stop offset="100%" stopColor={color} stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <XAxis dataKey="t" type="number" hide domain={['dataMin', 'dataMax']} />
+          <YAxis hide domain={['dataMin', 'dataMax']} />
+          <Area type="monotone" dataKey="c" stroke={color} strokeWidth={2} fill={`url(#${gid})`} dot={false} isAnimationActive={false} />
+          <ReferenceDot x={last.t} y={last.c} r={3.5} fill={color} stroke="none" isFront />
         </AreaChart>
       </ResponsiveContainer>
     </div>
