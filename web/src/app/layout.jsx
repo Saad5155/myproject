@@ -1,5 +1,6 @@
 import './globals.css'
 import RegisterSW from './register-sw'
+import { getSupabaseUrl, getSupabaseAnonKey } from '@/lib/supabase/config'
 
 export const metadata = {
   title: 'TERMINAL X',
@@ -19,9 +20,13 @@ export const viewport = {
 }
 
 export default function RootLayout({ children }) {
+  // Inject the public Supabase config (URL + anon key are safe to expose) so the
+  // browser client works no matter which env-var names the host used.
+  const sb = JSON.stringify({ url: getSupabaseUrl() || '', anonKey: getSupabaseAnonKey() || '' })
   return (
     <html lang="en">
       <body>
+        <script dangerouslySetInnerHTML={{ __html: `window.__SB__=${sb}` }} />
         {children}
         <RegisterSW />
       </body>

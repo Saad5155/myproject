@@ -1,13 +1,14 @@
 import { createServerClient } from '@supabase/ssr'
 import { createClient as createSbClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
+import { getSupabaseUrl, getSupabaseAnonKey, getSupabaseServiceKey } from './config'
 
 // Request-scoped server client bound to the auth cookie (respects RLS as the user).
 export function createServerSupabase() {
   const cookieStore = cookies()
   return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    getSupabaseUrl(),
+    getSupabaseAnonKey(),
     {
       cookies: {
         getAll() { return cookieStore.getAll() },
@@ -23,8 +24,8 @@ export function createServerSupabase() {
 // Service-role client — bypasses RLS. ONLY use server-side for the shared quote_cache.
 export function createServiceSupabase() {
   return createSbClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY,
+    getSupabaseUrl(),
+    getSupabaseServiceKey(),
     { auth: { persistSession: false, autoRefreshToken: false } }
   )
 }

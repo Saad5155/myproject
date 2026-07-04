@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
+import { getSupabaseUrl, getSupabaseAnonKey } from '@/lib/supabase/config'
 
 // Refreshes the Supabase session on every request and guards the app.
 // Unauthenticated users are redirected to /login (except public paths + auth API).
@@ -14,26 +15,35 @@ export async function middleware(request) {
     return NextResponse.next({ request })
   }
 
+  const supaUrl = getSupabaseUrl()
+  const supaAnon = getSupabaseAnonKey()
+  // Not configured yet (env vars missing) — don't 500. Let the request through
+  // so the login page renders with a clear message instead of a crash.
+  if (!supaUrl || !supaAnon) return NextResponse.next({ request })
+
   let response = NextResponse.next({ request })
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-    {
-      cookies: {
-        getAll() { return request.cookies.getAll() },
-        setAll(list) {
-          list.forEach(({ name, value }) => request.cookies.set(name, value))
-          response = NextResponse.next({ request })
-          list.forEach(({ name, value, options }) => response.cookies.set(name, value, options))
-        },
+  const supabase = createServerClient(supaUrl, supaAnon, {
+    cookies: {
+      getAll() { return request.cookies.getAll() },
+      setAll(list) {
+        list.forEach(({ name, value }) => request.cookies.set(name, value))
+        response = NextResponse.next({ request })
+        list.forEach(({ name, value, options }) => response.cookies.set(name, value, options))
       },
-    }
-  )
+    },
+  })
 
-  const { data: { user } } = await supabase.auth.getUser()
+  let user = null
+  try {
+    const { data } = await supabase.auth.getUser()
+    user = data?.user || null
+  } catch {
+    // transient auth/network error — don't hard-crash the whole site
+    return NextResponse.next({ request })
+  }
+
   const { pathname } = request.nextUrl
-
   const isPublic =
     pathname.startsWith('/login') ||
     pathname.startsWith('/_next') ||
