@@ -163,6 +163,51 @@ export async function getProfile(symbol) {
   return p
 }
 
+// ---- symbol search (autocomplete) ----
+const POPULAR = [
+  ['AAPL', 'Apple Inc'], ['MSFT', 'Microsoft'], ['GOOGL', 'Alphabet (Google)'], ['AMZN', 'Amazon'],
+  ['NVDA', 'NVIDIA'], ['META', 'Meta Platforms'], ['TSLA', 'Tesla'], ['JPM', 'JPMorgan Chase'],
+  ['V', 'Visa'], ['MA', 'Mastercard'], ['UNH', 'UnitedHealth'], ['LLY', 'Eli Lilly'],
+  ['JNJ', 'Johnson & Johnson'], ['XOM', 'Exxon Mobil'], ['WMT', 'Walmart'], ['PG', 'Procter & Gamble'],
+  ['HD', 'Home Depot'], ['COST', 'Costco'], ['BAC', 'Bank of America'], ['KO', 'Coca-Cola'],
+  ['PEP', 'PepsiCo'], ['MRK', 'Merck'], ['ABBV', 'AbbVie'], ['AVGO', 'Broadcom'], ['ORCL', 'Oracle'],
+  ['CRM', 'Salesforce'], ['ADBE', 'Adobe'], ['NFLX', 'Netflix'], ['AMD', 'AMD'], ['INTC', 'Intel'],
+  ['DIS', 'Disney'], ['RTX', 'RTX (Raytheon)'], ['BA', 'Boeing'], ['CAT', 'Caterpillar'],
+  ['GE', 'GE Aerospace'], ['T', 'AT&T'], ['VZ', 'Verizon'], ['PFE', 'Pfizer'], ['CVX', 'Chevron'],
+  ['NKE', 'Nike'], ['MCD', "McDonald's"], ['GS', 'Goldman Sachs'], ['MS', 'Morgan Stanley'],
+  ['C', 'Citigroup'], ['WFC', 'Wells Fargo'], ['PYPL', 'PayPal'], ['UBER', 'Uber'], ['SBUX', 'Starbucks'],
+  ['QCOM', 'Qualcomm'], ['TXN', 'Texas Instruments'], ['IBM', 'IBM'], ['GM', 'General Motors'],
+  ['F', 'Ford'], ['PLTR', 'Palantir'], ['SHOP', 'Shopify'], ['COIN', 'Coinbase'], ['ABNB', 'Airbnb'],
+  ['SPY', 'S&P 500 ETF'], ['QQQ', 'Nasdaq 100 ETF'], ['DIA', 'Dow Jones ETF'],
+]
+function popularSearch(q) {
+  const s = q.toUpperCase()
+  return POPULAR
+    .filter(([sym, name]) => sym.startsWith(s) || sym.includes(s) || name.toUpperCase().includes(s))
+    .slice(0, 8)
+    .map(([symbol, description]) => ({ symbol, description }))
+}
+
+export async function searchSymbols(q) {
+  const query = String(q || '').trim()
+  if (!query) return []
+  if (isDemo()) return popularSearch(query)
+  if (process.env.FINNHUB_API_KEY) {
+    try {
+      const r = await fetch(`${FINNHUB}/search?q=${encodeURIComponent(query)}&token=${process.env.FINNHUB_API_KEY}`)
+      if (r.ok) {
+        const j = await r.json()
+        const results = (j?.result || [])
+          .filter((x) => x.symbol && !x.symbol.includes('.') && !x.symbol.includes(':'))
+          .slice(0, 10)
+          .map((x) => ({ symbol: x.symbol, description: x.description || x.displaySymbol || x.symbol }))
+        if (results.length) return results
+      }
+    } catch { /* fall through */ }
+  }
+  return popularSearch(query)
+}
+
 // ---- REAL financial statements via Alpha Vantage ----
 // One deep dive = 6 AV calls (OVERVIEW, INCOME_STATEMENT, BALANCE_SHEET,
 // CASH_FLOW, EARNINGS, EARNINGS_CALENDAR), cached 24h per symbol.

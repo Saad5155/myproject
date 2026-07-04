@@ -4,6 +4,7 @@ import {
   CartesianGrid, Tooltip, Legend, Cell,
 } from 'recharts'
 import { Panel, ErrBox, LoadingSequence, SourceBadge } from './common'
+import TickerSearch from './TickerSearch'
 import { ScreenerChecklist } from './Screener'
 import { evaluateScreener } from '../lib/screener'
 import { money, num, pct, compact, moneyCompact, classFor, uid, stamp } from '../lib/format'
@@ -76,11 +77,9 @@ export default function DeepDive({ symbol, onConsumeSymbol, research, onSaveCard
       title="Company Deep Dive" fk="F7" className={className}
       right={report && <button className="btn amber" onClick={saveCard} disabled={saved}>{saved ? '✓ SAVED' : '💾 SAVE CARD'}</button>}
     >
-      <div className="btn-row" style={{ marginBottom: 8 }}>
-        <input style={{ flex: 1 }} placeholder="TICKER — full research station…" value={ticker}
-          onChange={(e) => setTicker(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && run()}
-          autoCapitalize="characters" spellCheck={false} />
-        <button className="btn amber" onClick={() => run()} disabled={busy}>{busy ? 'FETCHING…' : 'RESEARCH'}</button>
+      <div style={{ marginBottom: 8 }}>
+        <TickerSearch placeholder="Search a company or ticker → full research…"
+          onSelect={(s) => { setTicker(s); run(s) }} />
       </div>
 
       {error && <ErrBox>{error}</ErrBox>}

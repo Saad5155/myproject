@@ -524,3 +524,30 @@ button:focus-visible, .fkey:focus-visible, .mtab:focus-visible, .tickerrow:focus
   padding: 6px 9px; cursor: pointer; min-height: 38px;
 }
 .iconbtn:hover { color: var(--text); border-color: var(--green-dim); }
+
+/* ---------- ticker autocomplete ---------- */
+.tsearch { position: relative; display: flex; align-items: center; }
+.tsearch-icon {
+  position: absolute; left: 8px; color: var(--green-dim); font-size: 15px; pointer-events: none;
+}
+.tsearch-input {
+  width: 100%; padding: 7px 26px 7px 26px; background: #030603;
+  border: 1px solid var(--grid-line); color: var(--text); font-size: 13px;
+}
+.tsearch.big .tsearch-input { padding: 11px 30px; font-size: 15px; }
+.tsearch-input:focus { border-color: var(--green); box-shadow: 0 0 0 1px var(--green-dim), 0 0 8px rgba(43,255,136,0.25); }
+.tsearch-clear {
+  position: absolute; right: 8px; color: var(--text-dim); cursor: pointer; font-size: 12px; padding: 2px 4px;
+}
+.tsearch-clear:hover { color: var(--red); }
+.tsearch-drop {
+  position: absolute; top: calc(100% + 2px); left: 0; right: 0; z-index: 10050;
+  background: #060a06; border: 1px solid var(--green-dim);
+  max-height: 320px; overflow-y: auto; box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+}
+.tsearch-item {
+  padding: 8px 10px; cursor: pointer; border-bottom: 1px solid #0c1a0c;
+  display: flex; gap: 8px; align-items: baseline; white-space: nowrap; overflow: hidden;
+}
+.tsearch-item.hi, .tsearch-item:hover { background: #12240f; }
+.tsearch-desc { overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
