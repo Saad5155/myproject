@@ -16,7 +16,7 @@ import Watchlist from '@/components/Watchlist'
 import DeepDive from '@/components/DeepDive'
 import Settings from '@/components/Settings'
 import MorningBrief from '@/components/MorningBrief'
-import SearchModal from '@/components/SearchModal'
+import MarketsModal from '@/components/MarketsModal'
 
 const PANELS = [
   { key: 'portfolio', label: 'PORTFOLIO', fk: 'F1', ic: '▤' },
@@ -253,7 +253,7 @@ export default function Page() {
         <span className="brand">TERMINAL&nbsp;<span className="x">X</span></span>
         <span className="dim" style={{ fontSize: 10 }}>on-demand · not streaming</span>
         <span className="spacer" />
-        <button className="iconbtn" onClick={() => setShowSearch(true)} aria-label="Search" title="Search (/)">⌕ SEARCH</button>
+        <button className="iconbtn" onClick={() => setShowSearch(true)} aria-label="Markets and search" title="Markets · Search (/)">⌕ MARKETS</button>
         <button className="btn amber" onClick={() => setShowBrief(true)}>☀ MORNING BRIEF</button>
         <button className="iconbtn" onClick={() => setShowSettings(true)} aria-label="Settings" title="Settings (F9)">CFG</button>
         <button className="iconbtn" onClick={signOut} aria-label="Sign out" title="Sign out">EXIT</button>
@@ -309,7 +309,7 @@ export default function Page() {
       )}
 
       {klaxon.length > 0 && <AlertKlaxon triggered={klaxon} onDismiss={() => setKlaxon([])} />}
-      {showSearch && <SearchModal onClose={() => setShowSearch(false)} onSelect={openTicker} />}
+      {showSearch && <MarketsModal onClose={() => setShowSearch(false)} onSelect={openTicker} />}
       {showSettings && (
         <Settings onClose={() => setShowSettings(false)}
           size={state.portfolio.size ?? 7500}

@@ -4,7 +4,7 @@
 import 'server-only'
 import { createServiceSupabase } from '../supabase/server'
 import { askClaudeWithSearch, parseJSONLoose } from './anthropic'
-import { isDemo, demoQuote, demoMacro, demoHistory } from './demo'
+import { isDemo, demoQuote, demoMacro, demoHistory, demoSectors, demoMovers } from './demo'
 
 const FINNHUB = 'https://finnhub.io/api/v1'
 const ALPHA = 'https://www.alphavantage.co/query'
@@ -501,6 +501,58 @@ export async function getPriceHistory(symbol, range = '1Y') {
     }
   } catch { /* fall through */ }
   return { symbol: sym, range: rng, points: [], source: null, time: now() }
+}
+
+// ---- sector performance (sector-ETF proxies) ----
+const SECTORS = [
+  ['XLK', 'Technology'], ['XLF', 'Financials'], ['XLV', 'Health Care'], ['XLE', 'Energy'],
+  ['XLY', 'Consumer Disc.'], ['XLP', 'Consumer Staples'], ['XLI', 'Industrials'],
+  ['XLC', 'Communications'], ['XLB', 'Materials'], ['XLU', 'Utilities'], ['XLRE', 'Real Estate'],
+]
+export async function getSectors() {
+  if (isDemo()) return demoSectors()
+  if (!process.env.FINNHUB_API_KEY) return []
+  const quotes = await getQuotes(SECTORS.map((s) => s[0]))
+  return SECTORS
+    .map(([symbol, label]) => {
+      const q = quotes[symbol]
+      const ok = q && !q.error
+      return { symbol, label, price: ok ? q.price : null, changePct: ok ? q.changePct : null }
+    })
+    .sort((a, b) => (b.changePct ?? -999) - (a.changePct ?? -999))
+}
+
+// ---- market movers (Alpha Vantage TOP_GAINERS_LOSERS, free) ----
+let moversCooldownUntil = 0
+export async function getMarketMovers() {
+  if (isDemo()) return demoMovers()
+  const cached = await cacheGet('__MOVERS__', 'movers', 60 * 60 * 1000) // 60m
+  if (cached) return { ...cached, cached: true }
+  if (!process.env.ALPHAVANTAGE_API_KEY) return { available: false }
+  if (Date.now() < moversCooldownUntil) return { available: false }
+  moversCooldownUntil = Date.now() + 20 * 60 * 1000
+  const map = (arr) => (arr || []).slice(0, 12).map((x) => ({
+    symbol: x.ticker,
+    price: num(x.price),
+    changePct: parseFloat(String(x.change_percentage || '').replace('%', '')),
+    volume: num(x.volume),
+  }))
+  try {
+    const r = await fetch(`${ALPHA}?function=TOP_GAINERS_LOSERS&apikey=${process.env.ALPHAVANTAGE_API_KEY}`)
+    const j = await r.json()
+    if (j?.top_gainers?.length) {
+      const out = { available: true, gainers: map(j.top_gainers), losers: map(j.top_losers), active: map(j.most_actively_traded), source: LIVE, time: now() }
+      await cacheSet('__MOVERS__', 'movers', out)
+      return out
+    }
+  } catch { /* fall through */ }
+  return { available: false }
+}
+
+// ---- combined markets explorer payload ----
+export async function getMarkets() {
+  const [snapshot, sectors, movers] = await Promise.all([getMarketSnapshot(), getSectors(), getMarketMovers()])
+  return { items: snapshot.items, econ: snapshot.econ, sectors, movers, time: now() }
 }
 
 export async function getMarketSnapshot() {

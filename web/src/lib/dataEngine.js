@@ -16,6 +16,16 @@ export async function getQuotes(symbols) {
   }
 }
 
+export async function getMarkets() {
+  try {
+    const res = await fetch('/api/markets')
+    if (!res.ok) throw new Error('markets fetch failed')
+    return res.json()
+  } catch {
+    return { items: [], econ: { available: false }, sectors: [], movers: { available: false }, error: true }
+  }
+}
+
 export async function getMacro() {
   try {
     const res = await fetch('/api/macro')

@@ -380,6 +380,35 @@ export function demoVision() {
   return DEMO_POSITIONS
 }
 
+export function demoSectors() {
+  const rows = [
+    ['XLK', 'Technology', 1.42], ['XLC', 'Communications', 0.98], ['XLY', 'Consumer Disc.', 0.61],
+    ['XLF', 'Financials', 0.34], ['XLI', 'Industrials', 0.12], ['XLB', 'Materials', -0.05],
+    ['XLV', 'Health Care', -0.22], ['XLP', 'Consumer Staples', -0.31], ['XLRE', 'Real Estate', -0.44],
+    ['XLU', 'Utilities', -0.58], ['XLE', 'Energy', 1.56],
+  ]
+  return rows
+    .map(([symbol, label, changePct]) => ({ symbol, label, changePct, price: 100 + (symbol.charCodeAt(2) % 40) }))
+    .sort((a, b) => b.changePct - a.changePct)
+}
+
+export function demoMovers() {
+  const g = [
+    ['SMCI', 312.4, 18.6], ['PLTR', 84.2, 12.1], ['COIN', 291.5, 9.8], ['AMD', 178.9, 7.2],
+    ['SHOP', 112.3, 6.4], ['NVDA', 168.5, 5.1], ['UBER', 92.7, 4.8], ['ABNB', 148.2, 4.1],
+  ]
+  const l = [
+    ['BA', 178.3, -8.9], ['INTC', 28.4, -7.1], ['PFE', 24.8, -5.6], ['NKE', 71.2, -4.9],
+    ['DIS', 98.4, -4.2], ['WBA', 11.3, -3.8], ['F', 11.9, -3.1], ['T', 22.1, -2.7],
+  ]
+  const a = [
+    ['NVDA', 168.5, 5.1], ['TSLA', 244.8, -2.3], ['AAPL', 228.4, 0.5], ['AMD', 178.9, 7.2],
+    ['SMCI', 312.4, 18.6], ['F', 11.9, -3.1], ['PLTR', 84.2, 12.1], ['INTC', 28.4, -7.1],
+  ]
+  const map = (rows) => rows.map(([symbol, price, changePct]) => ({ symbol, price, changePct, volume: 1e7 + symbol.charCodeAt(0) * 1e5 }))
+  return { available: true, gainers: map(g), losers: map(l), active: map(a), source: 'DEMO', time: NOW() }
+}
+
 export function demoHistory(sym, range) {
   const n = range === '5Y' ? 60 : 52
   const base = (DEMO_QUOTES[sym]?.price) || (80 + (sym.charCodeAt(0) % 40) * 3)
