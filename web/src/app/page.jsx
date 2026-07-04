@@ -12,6 +12,7 @@ import NewsWire from '@/components/NewsWire'
 import Screener from '@/components/Screener'
 import Alerts, { checkAlerts, AlertKlaxon } from '@/components/Alerts'
 import Calendar from '@/components/Calendar'
+import Watchlist from '@/components/Watchlist'
 import DeepDive from '@/components/DeepDive'
 import Settings from '@/components/Settings'
 import MorningBrief from '@/components/MorningBrief'
@@ -25,6 +26,7 @@ const PANELS = [
   { key: 'alerts', label: 'ALERTS', fk: 'F5', ic: '!' },
   { key: 'calendar', label: 'CAL', fk: 'F6', ic: '▦' },
   { key: 'deepdive', label: 'DEEP DIVE', fk: 'F7', ic: '◎' },
+  { key: 'watchlist', label: 'WATCH', fk: 'F8', ic: '★' },
 ]
 
 const DEFAULTS = { portfolio: { positions: [], size: 7500 }, alerts: [], watchlist: [], news: null, calendar: null }
@@ -130,7 +132,7 @@ export default function Page() {
   useEffect(() => {
     if (!loaded || !state) return
     const alertTickers = (state.alerts || []).filter((a) => a.active).map((a) => a.ticker)
-    const toFetch = [...new Set([...alertTickers, ...tickers])]
+    const toFetch = [...new Set([...alertTickers, ...tickers, ...(state.watchlist || [])])]
     if (!toFetch.length) return
     ;(async () => {
       try {
@@ -149,11 +151,11 @@ export default function Page() {
     const handler = (e) => {
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName || '')
       if (e.key === '/' && !typing) { e.preventDefault(); setShowSearch(true); return }
-      const m = /^F([1-8])$/.exec(e.key)
+      const m = /^F([1-9])$/.exec(e.key)
       if (!m) return
       e.preventDefault()
       const n = Number(m[1])
-      if (n === 8) { setShowSettings(true); return }
+      if (n === 9) { setShowSettings(true); return }
       const p = PANELS[n - 1]; if (p) setActive(p.key)
     }
     window.addEventListener('keydown', handler)
@@ -167,6 +169,7 @@ export default function Page() {
   const setAlerts = patch('alerts')
   const setNews = patch('news')
   const setCalendar = patch('calendar')
+  const setWatchlist = patch('watchlist')
 
   // ---- research cards (server-backed) ----
   async function saveCard(report) {
@@ -225,6 +228,10 @@ export default function Page() {
     <DeepDive className={cls} symbol={deepDiveSymbol} onConsumeSymbol={() => setDeepDiveSymbol(null)}
       research={research} onSaveCard={saveCard} onDeleteCard={deleteCard} />
   )
+  const watchlistEl = (cls) => (
+    <Watchlist className={cls} watchlist={state.watchlist || []} setWatchlist={setWatchlist} quotes={quotes}
+      refreshQuotes={refreshQuotes} refreshing={refreshing} openTicker={openTicker} />
+  )
 
   function renderPanel(key) {
     switch (key) {
@@ -235,6 +242,7 @@ export default function Page() {
       case 'alerts': return <Alerts alerts={state.alerts} setAlerts={setAlerts} lastCheck={lastCheck} />
       case 'calendar': return <Calendar tickers={tickers} calendar={state.calendar} setCalendar={setCalendar} />
       case 'deepdive': return deepEl()
+      case 'watchlist': return watchlistEl()
       default: return null
     }
   }
@@ -247,7 +255,7 @@ export default function Page() {
         <span className="spacer" />
         <button className="iconbtn" onClick={() => setShowSearch(true)} aria-label="Search" title="Search (/)">⌕ SEARCH</button>
         <button className="btn amber" onClick={() => setShowBrief(true)}>☀ MORNING BRIEF</button>
-        <button className="iconbtn" onClick={() => setShowSettings(true)} aria-label="Settings" title="Settings (F8)">CFG</button>
+        <button className="iconbtn" onClick={() => setShowSettings(true)} aria-label="Settings" title="Settings (F9)">CFG</button>
         <button className="iconbtn" onClick={signOut} aria-label="Sign out" title="Sign out">EXIT</button>
         <Clock />
       </div>
@@ -279,9 +287,10 @@ export default function Page() {
             <CommandLine className="col-4 row-2" />
             {deepEl('col-4 row-2')}
             <NewsWire className="col-6" tickers={tickers} news={state.news} setNews={setNews} />
+            {watchlistEl('col-6')}
             <Screener className="col-6" />
             <Calendar className="col-6" tickers={tickers} calendar={state.calendar} setCalendar={setCalendar} />
-            <Alerts className="col-6" alerts={state.alerts} setAlerts={setAlerts} lastCheck={lastCheck} />
+            <Alerts className="col-12" alerts={state.alerts} setAlerts={setAlerts} lastCheck={lastCheck} />
           </div>
         )}
       </div>

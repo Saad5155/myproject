@@ -4,7 +4,7 @@
 import 'server-only'
 import { createServiceSupabase } from '../supabase/server'
 import { askClaudeWithSearch, parseJSONLoose } from './anthropic'
-import { isDemo, demoQuote, demoMacro } from './demo'
+import { isDemo, demoQuote, demoMacro, demoHistory } from './demo'
 
 const FINNHUB = 'https://finnhub.io/api/v1'
 const ALPHA = 'https://www.alphavantage.co/query'
@@ -469,6 +469,38 @@ async function getEcon() {
   const econ = { available: true, ...vals, source: LIVE, time: now() }
   await cacheSet('__ECON__', 'econ', econ)
   return econ
+}
+
+// ---- price history (Yahoo Finance chart API — free, no key) ----
+export async function getPriceHistory(symbol, range = '1Y') {
+  const sym = symbol.toUpperCase().trim()
+  const rng = range === '5Y' ? '5Y' : '1Y'
+  if (isDemo()) return demoHistory(sym, rng)
+  const cacheKey = 'hist_' + rng
+  const cached = await cacheGet(sym, cacheKey, FUND_TTL_MS) // 24h
+  if (cached) return { ...cached, cached: true }
+  const cfg = rng === '5Y' ? { range: '5y', interval: '1mo' } : { range: '1y', interval: '1wk' }
+  try {
+    const r = await fetch(
+      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=${cfg.range}&interval=${cfg.interval}`,
+      { headers: { 'User-Agent': 'Mozilla/5.0' } }
+    )
+    if (r.ok) {
+      const j = await r.json()
+      const res = j?.chart?.result?.[0]
+      const ts = res?.timestamp
+      const cl = res?.indicators?.quote?.[0]?.close
+      if (Array.isArray(ts) && Array.isArray(cl)) {
+        const points = ts.map((t, i) => ({ t, c: cl[i] })).filter((p) => p.c != null)
+        if (points.length > 2) {
+          const out = { symbol: sym, range: rng, points, source: LIVE, time: now() }
+          await cacheSet(sym, cacheKey, out)
+          return out
+        }
+      }
+    }
+  } catch { /* fall through */ }
+  return { symbol: sym, range: rng, points: [], source: null, time: now() }
 }
 
 export async function getMarketSnapshot() {
