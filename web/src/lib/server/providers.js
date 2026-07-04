@@ -5,6 +5,8 @@ import 'server-only'
 import { createServiceSupabase } from '../supabase/server'
 import { askClaudeWithSearch, parseJSONLoose } from './anthropic'
 import { isDemo, demoQuote, demoMacro, demoHistory, demoSectors, demoMovers } from './demo'
+import { getFmpQuote, getFmpMovers, getFmpFundamentals, fmpConfigured } from './fmp'
+import { getFredEcon, fredConfigured } from './fred'
 
 const FINNHUB = 'https://finnhub.io/api/v1'
 const ALPHA = 'https://www.alphavantage.co/query'
@@ -46,13 +48,20 @@ async function cacheSet(symbol, kind, data) {
 
 // ---- connectivity ----
 export async function testConnectivity() {
-  if (isDemo()) return { finnhub: 'DEMO MODE', alphavantage: 'DEMO MODE', aisearch: 'DEMO MODE' }
+  if (isDemo()) return { finnhub: 'DEMO MODE', fmp: 'DEMO MODE', fred: 'DEMO MODE', alphavantage: 'DEMO MODE', aisearch: 'DEMO MODE' }
   const out = {
     finnhub: process.env.FINNHUB_API_KEY ? 'CHECKING…' : 'NO KEY',
+    fmp: fmpConfigured() ? 'CHECKING…' : 'NO KEY',
     alphavantage: process.env.ALPHAVANTAGE_API_KEY ? 'CHECKING…' : 'NO KEY',
+    fred: fredConfigured() ? 'READY ✓' : 'NO KEY',
     aisearch: process.env.ANTHROPIC_API_KEY ? 'READY ✓' : 'NO KEY',
   }
   const checks = []
+  if (fmpConfigured()) {
+    checks.push(getFmpQuote('AAPL')
+      .then((q) => { out.fmp = (q && q.price > 0) ? 'CONNECTED ✓' : 'ERROR' })
+      .catch(() => { out.fmp = 'BLOCKED' }))
+  }
   if (process.env.FINNHUB_API_KEY) {
     checks.push(fetch(`${FINNHUB}/quote?symbol=AAPL&token=${process.env.FINNHUB_API_KEY}`)
       .then((r) => r.json())
@@ -90,6 +99,16 @@ export async function getQuote(symbol) {
           await cacheSet(sym, 'quote', q)
           return q
         }
+      }
+    } catch { /* fall through */ }
+  }
+  if (fmpConfigured()) {
+    try {
+      const fq = await getFmpQuote(sym)
+      if (fq && fq.price > 0) {
+        const q = { ...fq, time: now() }
+        await cacheSet(sym, 'quote', q)
+        return q
       }
     } catch { /* fall through */ }
   }
@@ -266,6 +285,7 @@ async function avStatementSequence(sym, budgetMs = 32000) {
 // EARNINGS_CALENDAR returns CSV: symbol,name,reportDate,fiscalDateEnding,estimate,currency,timeOfTheDay
 // Single attempt, optional — never retried.
 async function avNextEarnings(sym) {
+  if (!process.env.ALPHAVANTAGE_API_KEY) return null
   try {
     const r = await fetch(`${ALPHA}?function=EARNINGS_CALENDAR&symbol=${sym}&horizon=3month&apikey=${process.env.ALPHAVANTAGE_API_KEY}`)
     if (!r.ok) return null
@@ -308,9 +328,31 @@ async function finnhubMetrics(sym) {
 // AV is unavailable (no key / rate limit) so the caller can fall back to AI.
 export async function getFundamentals(symbol) {
   const sym = symbol.toUpperCase().trim()
-  if (!process.env.ALPHAVANTAGE_API_KEY) return null
+  if (!fmpConfigured() && !process.env.ALPHAVANTAGE_API_KEY) return null
   const cached = await cacheGet(sym, 'fundamentals', STMT_TTL_MS)
   if (cached) return { ...cached, cached: true }
+
+  // PRIMARY: Financial Modeling Prep (250/day, fast, one burst of parallel calls).
+  // Enrich peer rows with free Finnhub basic financials so the peer table isn't empty.
+  if (fmpConfigured()) {
+    try {
+      const report = await getFmpFundamentals(sym)
+      if (report) {
+        const [peerRows, nextEarnings] = await Promise.all([
+          Promise.all((report.peers || []).map(async (p) => {
+            const m = await finnhubMetrics(p.ticker)
+            return { ...p, revenueGrowthPct: m?.revenueGrowthPct ?? null, pe: m?.pe ?? null, netMarginPct: m?.netMarginPct ?? null }
+          })),
+          avNextEarnings(sym).catch(() => null),
+        ])
+        report.peers = peerRows
+        if (nextEarnings) report.screener.nextCatalyst = { date: nextEarnings, event: 'Earnings report' }
+        await cacheSet(sym, 'fundamentals', report)
+        return report
+      }
+    } catch { /* fall through to Alpha Vantage */ }
+  }
+  if (!process.env.ALPHAVANTAGE_API_KEY) return null
 
   // Finnhub calls are fast and generous (60/min) — run in parallel with the
   // paced Alpha Vantage statement sequence.
@@ -439,6 +481,16 @@ let econCooldownUntil = 0
 async function getEcon() {
   const cached = await cacheGet('__ECON__', 'econ', FUND_TTL_MS)
   if (cached) return { ...cached, cached: true }
+  // PRIMARY: FRED (free, official, no burst throttling).
+  if (fredConfigured()) {
+    try {
+      const econ = await getFredEcon()
+      if (econ?.available) {
+        await cacheSet('__ECON__', 'econ', econ)
+        return econ
+      }
+    } catch { /* fall through to AV */ }
+  }
   if (!process.env.ALPHAVANTAGE_API_KEY) return { available: false }
   if (Date.now() < econCooldownUntil) return { available: false }
   econCooldownUntil = Date.now() + 30 * 60 * 1000
@@ -511,7 +563,7 @@ const SECTORS = [
 ]
 export async function getSectors() {
   if (isDemo()) return demoSectors()
-  if (!process.env.FINNHUB_API_KEY) return []
+  if (!process.env.FINNHUB_API_KEY && !fmpConfigured()) return []
   const quotes = await getQuotes(SECTORS.map((s) => s[0]))
   return SECTORS
     .map(([symbol, label]) => {
@@ -528,6 +580,17 @@ export async function getMarketMovers() {
   if (isDemo()) return demoMovers()
   const cached = await cacheGet('__MOVERS__', 'movers', 60 * 60 * 1000) // 60m
   if (cached) return { ...cached, cached: true }
+  // PRIMARY: FMP (generous limits, real-time gainers/losers/actives).
+  if (fmpConfigured()) {
+    try {
+      const m = await getFmpMovers()
+      if (m?.available) {
+        const out = { ...m, time: now() }
+        await cacheSet('__MOVERS__', 'movers', out)
+        return out
+      }
+    } catch { /* fall through to AV */ }
+  }
   if (!process.env.ALPHAVANTAGE_API_KEY) return { available: false }
   if (Date.now() < moversCooldownUntil) return { available: false }
   moversCooldownUntil = Date.now() + 20 * 60 * 1000
@@ -560,7 +623,7 @@ export async function getMarketSnapshot() {
   // The tape refreshes every 60s — only pull the 8-symbol basket when Finnhub
   // (60 calls/min) is configured. Never burn AV budget or slow AI searches on it.
   let items = MACRO_BASKET.map((b) => ({ symbol: b.symbol, label: b.label, group: b.group, price: null, changePct: null, source: null, time: null }))
-  if (process.env.FINNHUB_API_KEY) {
+  if (process.env.FINNHUB_API_KEY || fmpConfigured()) {
     const quotes = await getQuotes(MACRO_BASKET.map((b) => b.symbol))
     items = MACRO_BASKET.map((b) => {
       const q = quotes[b.symbol]

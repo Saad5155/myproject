@@ -22,7 +22,8 @@ export default function StatusLine({ nonce }) {
     <div className="statusline">
       <span>DATA ENGINE:</span>
       <span><span className="dim">FINNHUB</span> <span className={cls(st.finnhub)}>{st.finnhub}</span></span>
-      <span><span className="dim">ALPHAVANTAGE</span> <span className={cls(st.alphavantage)}>{st.alphavantage}</span></span>
+      <span><span className="dim">FMP</span> <span className={cls(st.fmp)}>{st.fmp}</span></span>
+      <span><span className="dim">FRED</span> <span className={cls(st.fred)}>{st.fred}</span></span>
       <span><span className="dim">AI-SEARCH</span> <span className={cls(st.aisearch)}>{st.aisearch}</span></span>
     </div>
   )

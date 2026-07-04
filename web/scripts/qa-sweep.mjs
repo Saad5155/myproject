@@ -110,11 +110,11 @@ await pg.locator('.cmdrow input').press('Enter')
 await pg.waitForTimeout(900)
 t('command line answers', (await pg.locator('.term-out.green').count()) > 0)
 
-// global search autocomplete → deep dive
-await pg.locator('button', { hasText: 'SEARCH' }).click()
-await pg.waitForTimeout(200)
-t('global search modal opens', (await pg.locator('.modal', {hasText:'Search'}).count()) === 1)
-t('search modal shows markets snapshot', (await pg.locator('.modal', {hasText:'MARKETS SNAPSHOT'}).count()) === 1)
+// global markets explorer + autocomplete → deep dive
+await pg.locator('button', { hasText: 'MARKETS' }).click()
+await pg.waitForTimeout(400)
+t('markets explorer modal opens', (await pg.locator('.modal', {hasText:'Markets'}).count()) === 1)
+t('markets modal shows indices', (await pg.locator('.modal', {hasText:'INDICES'}).count()) === 1)
 await pg.locator('.modal .tsearch-input').fill('IBM')
 await pg.waitForTimeout(500)
 t('autocomplete returns results', (await pg.locator('.modal .tsearch-drop .tsearch-item').count()) >= 1)
