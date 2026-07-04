@@ -198,6 +198,22 @@ async function finnhubPeers(sym) {
   return null
 }
 
+// Free Finnhub "basic financials" — used for the peer comparison table so the
+// AI gap-fill doesn't have to burn slow web searches on 9 peer metrics.
+async function finnhubMetrics(sym) {
+  if (!process.env.FINNHUB_API_KEY) return null
+  try {
+    const r = await fetch(`${FINNHUB}/stock/metric?symbol=${sym}&metric=all&token=${process.env.FINNHUB_API_KEY}`)
+    if (!r.ok) return null
+    const m = (await r.json())?.metric || {}
+    return {
+      pe: round1(num(m.peTTM) ?? num(m.peAnnual)),
+      revenueGrowthPct: round1(num(m.revenueGrowthTTMYoy)),
+      netMarginPct: round1(num(m.netProfitMarginTTM) ?? num(m.netProfitMarginAnnual)),
+    }
+  } catch { return null }
+}
+
 // Assemble a deep-dive report skeleton from REAL statements. Returns null when
 // AV is unavailable (no key / rate limit) so the caller can fall back to AI.
 export async function getFundamentals(symbol) {
@@ -216,6 +232,12 @@ export async function getFundamentals(symbol) {
     finnhubPeers(sym),
   ])
   if (!ov?.Symbol || !inc?.annualReports?.length) return null // rate-limited or unknown symbol
+
+  // peer metrics via free Finnhub basic financials (fast, no AI needed)
+  const peerRows = await Promise.all((peers || []).map(async (p) => {
+    const m = await finnhubMetrics(p)
+    return { ticker: p, name: null, revenueGrowthPct: m?.revenueGrowthPct ?? null, pe: m?.pe ?? null, netMarginPct: m?.netMarginPct ?? null }
+  }))
 
   const year = (d) => (d || '').slice(0, 4)
   const epsByYear = {}
@@ -295,7 +317,7 @@ export async function getFundamentals(symbol) {
       targetLow: null, targetAvg: num(ov.AnalystTargetPrice), targetHigh: null,
       recent: [],
     },
-    peers: (peers || []).map((p) => ({ ticker: p, name: null, revenueGrowthPct: null, pe: null, netMarginPct: null })),
+    peers: peerRows,
     screener: {
       peg: num(ov.PEGRatio),
       revenueGrowthPct: revenueYoY,

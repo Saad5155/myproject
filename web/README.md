@@ -65,8 +65,22 @@ Auth is bypassed, state is in-memory, market/AI data is canned (badged `DEMO`); 
 demo report is built from real IBM statements so charts and tables show genuine shapes.
 Never set `DEMO_MODE` in production.
 
-Deploy to **Vercel**: import the repo, set the same env vars, deploy. `maxDuration` is set on the
-AI routes for long web-search / deep-dive calls (raise the Vercel function limit if needed).
+## Deploy (one console: Vercel)
+
+1. **Import** — vercel.com → Add New → Project → pick this repo → set **Root Directory** to `web/` → Framework: Next.js (auto-detected).
+2. **Database** — in the Vercel project: **Storage → Create → Supabase (Marketplace)**. This provisions
+   the Postgres/auth backend *from inside Vercel* and auto-injects `NEXT_PUBLIC_SUPABASE_URL`,
+   `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` — exactly the names this app reads.
+3. **Schema** — from the Storage tab, open the Supabase dashboard → SQL Editor → paste and run
+   [`supabase/schema.sql`](supabase/schema.sql). Then Authentication → Users → **Add user**
+   (your email + password — this is your terminal login).
+4. **Keys** — Project → Settings → Environment Variables: add `ANTHROPIC_API_KEY` (required),
+   `FINNHUB_API_KEY`, `ALPHAVANTAGE_API_KEY`, and optionally `CLAUDE_MODEL`.
+5. **Deploy** — trigger a deployment; open the URL; sign in; on your phone use
+   "Add to Home Screen" to install the PWA.
+
+`maxDuration = 300` is set on the AI/deep-dive routes for long web-search calls (works on
+Vercel's fluid compute; raise plan limits if you ever hit them).
 
 ## Panels
 1. **Portfolio** — screenshot / paste / manual import, cost basis, P/L, allocation, cash remaining

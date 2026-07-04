@@ -22,20 +22,19 @@ const FULL_REPORT_SPEC = `Return ONLY a JSON object, no prose, no code fences, w
 "screener":{"peg":num,"revenueGrowthPct":num,"netIncome":num,"cash":num,"debt":num,"nextCatalyst":{"date":"YYYY-MM-DD","event":str},"targetsTrend":"raised"|"lowered"|"flat","ytdReturnPct":num}}
 All monetary values in raw USD (not millions).`
 
-function gapSpec(sym, peers) {
-  const peerPart = peers?.length
-    ? `For these peers of ${sym}: ${peers.join(', ')} — give revenue growth %, trailing P/E, and net margin % for each.`
-    : `Identify the 2-3 main competitors of ${sym} and give revenue growth %, trailing P/E, and net margin % for each.`
+function gapSpec(sym, needPeers) {
+  const peerPart = needPeers
+    ? ` (5) Identify the 2-3 main competitors of ${sym} with revenue growth %, trailing P/E, and net margin % — include as "peers":[{"ticker":str,"name":str,"revenueGrowthPct":num,"pe":num,"netMarginPct":num}].`
+    : ''
   return (
-    `For stock ${sym}, find with web search: (1) current analyst price targets (low, average, high); ` +
-    `(2) whether analyst targets have recently been RAISED, LOWERED, or FLAT; ` +
-    `(3) the 3 most recent analyst rating actions (date, firm, action, one-line note); ` +
-    `(4) the next dated catalyst in the coming 1-3 months (earnings, product event, FDA/regulatory decision, etc.); ` +
-    `(5) year-to-date stock price return in %. (6) ${peerPart} ` +
+    `For stock ${sym}, find quickly with web search (2-3 searches max, don't over-verify): ` +
+    `(1) current analyst price target range (low/average/high) and whether targets were recently RAISED, LOWERED, or FLAT; ` +
+    `(2) the 2-3 most recent analyst rating actions (date, firm, action, one-line note); ` +
+    `(3) the next dated catalyst in the coming 1-3 months (earnings date, product event, regulatory decision); ` +
+    `(4) year-to-date stock price return in %.${peerPart} ` +
     `Return ONLY JSON, no prose: {"targetLow":num,"targetAvg":num,"targetHigh":num,` +
     `"targetsTrend":"raised"|"lowered"|"flat","recent":[{"date":"YYYY-MM-DD","firm":str,"action":"upgrade"|"downgrade"|"initiate"|"maintain","note":str}],` +
-    `"nextCatalyst":{"date":"YYYY-MM-DD","event":str},"ytdReturnPct":num,` +
-    `"peers":[{"ticker":str,"name":str,"revenueGrowthPct":num,"pe":num,"netMarginPct":num}]}`
+    `"nextCatalyst":{"date":"YYYY-MM-DD","event":str},"ytdReturnPct":num${needPeers ? ',"peers":[...]' : ''}}`
   )
 }
 
@@ -57,12 +56,14 @@ export async function buildDeepDive(symbol) {
       report.changePct = quote.changePct ?? null
       report.sources = { ...report.sources, quote: { source: quote.source, time: quote.time } }
     }
-    // one AI pass for what free APIs don't provide
+    // one AI pass for what free APIs don't provide (hard 150s budget — the
+    // real-data report ships even if enrichment is slow or fails)
     if (aiConfigured()) {
       try {
+        const needPeers = !report.peers.length
         const text = await askClaudeWithSearch(
-          gapSpec(sym, report.peers.map((p) => p.ticker)),
-          { maxTokens: 2500, maxUses: 6 }
+          gapSpec(sym, needPeers),
+          { maxTokens: 2000, maxUses: 4, timeoutMs: 150000 }
         )
         const g = parseJSONLoose(text)
         if (g) {
@@ -73,10 +74,8 @@ export async function buildDeepDive(symbol) {
             targetHigh: g.targetHigh ?? report.analysts.targetHigh,
             recent: Array.isArray(g.recent) ? g.recent : [],
           }
-          if (Array.isArray(g.peers) && g.peers.length) {
-            report.peers = report.peers.length
-              ? report.peers.map((p) => ({ ...p, ...(g.peers.find((x) => x.ticker === p.ticker) || {}) }))
-              : g.peers.slice(0, 3)
+          if (!report.peers.length && Array.isArray(g.peers) && g.peers.length) {
+            report.peers = g.peers.slice(0, 3)
           }
           report.screener = {
             ...report.screener,

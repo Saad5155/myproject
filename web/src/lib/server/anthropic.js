@@ -12,7 +12,7 @@ export function aiConfigured() {
   return !!process.env.ANTHROPIC_API_KEY
 }
 
-async function callAnthropic(body) {
+async function callAnthropic(body, timeoutMs = 240000) {
   const key = process.env.ANTHROPIC_API_KEY
   if (!key) { const e = new Error('ANTHROPIC_API_KEY not set on the server.'); e.status = 503; throw e }
   const res = await fetch(ANTHROPIC_URL, {
@@ -23,6 +23,7 @@ async function callAnthropic(body) {
       'content-type': 'application/json',
     },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(timeoutMs),
   })
   if (!res.ok) {
     let detail = ''
@@ -43,12 +44,12 @@ export async function askClaude(prompt, { system, maxTokens = 2048 } = {}) {
   return extractText(msg)
 }
 
-export async function askClaudeWithSearch(prompt, { system, maxTokens = 4096, maxUses = 6 } = {}) {
+export async function askClaudeWithSearch(prompt, { system, maxTokens = 4096, maxUses = 6, timeoutMs } = {}) {
   const messages = [{ role: 'user', content: prompt }]
   const tools = [{ type: WEB_SEARCH_TOOL, name: 'web_search', max_uses: maxUses }]
   let msg
   for (let i = 0; i < 4; i++) {
-    msg = await callAnthropic({ model: getModel(), max_tokens: maxTokens, system, messages, tools })
+    msg = await callAnthropic({ model: getModel(), max_tokens: maxTokens, system, messages, tools }, timeoutMs)
     if (msg.stop_reason === 'pause_turn') { messages.push({ role: 'assistant', content: msg.content }); continue }
     break
   }
