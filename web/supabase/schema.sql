@@ -54,5 +54,15 @@ create policy "own telegram_link" on public.telegram_links
   for select using (auth.uid() = user_id);
 -- writes happen only via the service role (webhook), which bypasses RLS.
 
+-- 5) Login attempt log — backs the "3 sign-in attempts per hour" rate limit.
+--    Written/read only by the server (service role); RLS on with no policies.
+create table if not exists public.login_attempts (
+  id         bigint generated always as identity primary key,
+  ident      text not null,             -- lowercased email or client IP
+  at         timestamptz not null default now()
+);
+create index if not exists login_attempts_ident_at_idx on public.login_attempts(ident, at desc);
+alter table public.login_attempts enable row level security;
+
 -- NOTE: create users in Supabase → Authentication → Users (Add user, email +
 -- password). You control who gets an account — there is no public sign-up.

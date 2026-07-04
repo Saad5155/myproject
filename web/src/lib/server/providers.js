@@ -207,10 +207,28 @@ function popularSearch(q) {
     .map(([symbol, description]) => ({ symbol, description }))
 }
 
+// In-memory search cache (symbol lists barely change). Keyed by lowercased
+// query; TTL 12h; bounded so a long-running instance can't grow unbounded.
+const searchCache = new Map()
+const SEARCH_TTL_MS = 12 * 60 * 60 * 1000
+function searchCacheGet(key) {
+  const e = searchCache.get(key)
+  if (e && Date.now() - e.at < SEARCH_TTL_MS) return e.data
+  if (e) searchCache.delete(key)
+  return null
+}
+function searchCacheSet(key, data) {
+  searchCache.set(key, { data, at: Date.now() })
+  if (searchCache.size > 500) searchCache.delete(searchCache.keys().next().value) // evict oldest
+}
+
 export async function searchSymbols(q) {
   const query = String(q || '').trim()
   if (!query) return []
-  if (isDemo()) return popularSearch(query)
+  const key = query.toLowerCase()
+  const cached = searchCacheGet(key)
+  if (cached) return cached
+  if (isDemo()) { const r = popularSearch(query); searchCacheSet(key, r); return r }
   if (process.env.FINNHUB_API_KEY) {
     try {
       const r = await fetch(`${FINNHUB}/search?q=${encodeURIComponent(query)}&token=${process.env.FINNHUB_API_KEY}`)
@@ -220,11 +238,13 @@ export async function searchSymbols(q) {
           .filter((x) => x.symbol && !x.symbol.includes('.') && !x.symbol.includes(':'))
           .slice(0, 10)
           .map((x) => ({ symbol: x.symbol, description: x.description || x.displaySymbol || x.symbol }))
-        if (results.length) return results
+        if (results.length) { searchCacheSet(key, results); return results }
       }
     } catch { /* fall through */ }
   }
-  return popularSearch(query)
+  const fb = popularSearch(query)
+  if (fb.length) searchCacheSet(key, fb)
+  return fb
 }
 
 // ---- REAL financial statements via Alpha Vantage ----

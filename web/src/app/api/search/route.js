@@ -9,7 +9,10 @@ export async function GET(req) {
   if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   try {
     const q = new URL(req.url).searchParams.get('q') || ''
-    return NextResponse.json(await searchSymbols(q))
+    return NextResponse.json(await searchSymbols(q), {
+      // symbol lists are stable → let the browser reuse repeats for an hour
+      headers: { 'Cache-Control': 'private, max-age=3600' },
+    })
   } catch (e) {
     return NextResponse.json([], { status: 200 }) // search failures are non-fatal
   }

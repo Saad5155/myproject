@@ -565,3 +565,10 @@ button:focus-visible, .fkey:focus-visible, .mtab:focus-visible, .tickerrow:focus
 }
 .tsearch-item.hi, .tsearch-item:hover { background: #12240f; }
 .tsearch-desc { overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
+.tsearch-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 5px 10px; font-size: 10px; letter-spacing: 0.08em; color: var(--text-dim);
+  text-transform: uppercase; border-bottom: 1px solid #0c1a0c; background: #08120a;
+}
+.tsearch-clearrecent { cursor: pointer; color: var(--text-dim); text-transform: none; }
+.tsearch-clearrecent:hover { color: var(--amber); }

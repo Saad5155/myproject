@@ -42,3 +42,16 @@ export async function allTelegramLinks() {
   for (const r of data || []) map[r.user_id] = r.chat_id
   return map
 }
+
+// user_id -> email map for the cron (so alerts can also be emailed).
+export async function allUserEmails() {
+  const sb = createServiceSupabase()
+  const map = {}
+  for (let page = 1; page <= 20; page++) {
+    const { data, error } = await sb.auth.admin.listUsers({ page, perPage: 200 })
+    if (error || !data?.users?.length) break
+    for (const u of data.users) if (u.email) map[u.id] = u.email
+    if (data.users.length < 200) break
+  }
+  return map
+}

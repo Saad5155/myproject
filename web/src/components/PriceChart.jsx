@@ -5,19 +5,30 @@ import { money, pct } from '../lib/format'
 
 const CH = { green: '#2bff88', amber: '#ffb000', red: '#ff3b5c', grid: '#143b1f', text: '#5f8f70' }
 
+// Module-level cache so toggling ranges / reopening a chart is instant and
+// doesn't refetch. Shared across every PriceChart/Sparkline/IndexArea instance.
+const histCache = new Map() // 'SYM|RANGE' -> { at, data }
+const HIST_TTL_MS = 5 * 60 * 1000
+
 function useHistory(symbol, range) {
-  const [data, setData] = useState(null)
+  const key = symbol ? `${symbol.toUpperCase()}|${range}` : null
+  const fresh = key && histCache.get(key)
+  const initial = fresh && Date.now() - fresh.at < HIST_TTL_MS ? fresh.data : null
+  const [data, setData] = useState(initial)
   const [busy, setBusy] = useState(false)
   useEffect(() => {
     if (!symbol) return
+    const hit = histCache.get(key)
+    if (hit && Date.now() - hit.at < HIST_TTL_MS) { setData(hit.data); setBusy(false); return }
     let alive = true
     setBusy(true)
     fetch(`/api/history?symbol=${encodeURIComponent(symbol)}&range=${range}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((j) => { if (alive) setData(j) })
+      .then((j) => { if (j) histCache.set(key, { at: Date.now(), data: j }); if (alive) setData(j) })
       .catch(() => {})
       .finally(() => { if (alive) setBusy(false) })
     return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [symbol, range])
   return { data, busy }
 }

@@ -2,7 +2,34 @@ import { NextResponse } from 'next/server'
 import { createServiceSupabase } from '@/lib/supabase/server'
 import { getQuotes } from '@/lib/server/providers'
 import { sendTelegram, formatAlertHit, telegramBotConfigured } from '@/lib/server/telegram'
-import { allTelegramLinks } from '@/lib/server/telegramLinks'
+import { allTelegramLinks, allUserEmails } from '@/lib/server/telegramLinks'
+import { sendTemplatedMail, mailConfigured } from '@/lib/server/mailer'
+
+const money = (n) => (n == null ? '—' : '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
+
+// Fire an alert across every available channel; true if at least one went out.
+async function notifyHit(a, price, chatId, email) {
+  const jobs = []
+  if (chatId) jobs.push(sendTelegram(formatAlertHit({ ...a, currentPrice: price }), chatId))
+  if (email && mailConfigured()) {
+    const dir = a.condition === 'below' ? 'below' : 'above'
+    jobs.push(sendTemplatedMail({
+      to: email,
+      subject: `Alert — ${a.ticker} ${dir} ${money(a.price)}`,
+      title: `${a.ticker} is ${dir} your alert`,
+      intro: `${a.ticker} crossed ${dir} ${money(a.price)}.`,
+      rows: [
+        { label: 'Ticker', value: a.ticker },
+        { label: 'Condition', value: `${dir} ${money(a.price)}` },
+        { label: 'Current', value: money(price), color: a.condition === 'below' ? '#ff3b5c' : '#2bff88' },
+      ],
+      accent: a.condition === 'below' ? 'red' : 'green',
+    }))
+  }
+  if (!jobs.length) return false
+  const res = await Promise.allSettled(jobs)
+  return res.some((r) => r.status === 'fulfilled' && r.value?.ok)
+}
 
 export const maxDuration = 60
 
@@ -20,14 +47,17 @@ export async function GET(req) {
   const provided = url.searchParams.get('secret') || (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '')
   if (provided !== secret) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
 
-  if (!telegramBotConfigured()) {
-    return NextResponse.json({ ok: false, skipped: 'telegram bot not configured' })
+  const canTelegram = telegramBotConfigured()
+  const canEmail = mailConfigured()
+  if (!canTelegram && !canEmail) {
+    return NextResponse.json({ ok: false, skipped: 'no notification channel configured' })
   }
 
   const sb = createServiceSupabase()
-  const [{ data: rows, error }, links] = await Promise.all([
+  const [{ data: rows, error }, links, emails] = await Promise.all([
     sb.from('app_state').select('user_id, data'),
-    allTelegramLinks(),
+    canTelegram ? allTelegramLinks() : Promise.resolve({}),
+    canEmail ? allUserEmails() : Promise.resolve({}),
   ])
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
@@ -38,8 +68,9 @@ export async function GET(req) {
     const armed = alerts.filter((a) => a.active)
     if (!armed.length) continue
 
-    // Each user's alerts go to THEIR own linked Telegram chat.
+    // Each user's alerts go to THEIR own Telegram chat and/or account email.
     const chatId = links[row.user_id]
+    const email = emails[row.user_id]
 
     const symbols = [...new Set(armed.map((a) => a.ticker))]
     const quotes = await getQuotes(symbols)
@@ -52,9 +83,9 @@ export async function GET(req) {
       if (!q || q.error || q.price == null) continue
       const hit = a.condition === 'below' ? q.price <= a.price : q.price >= a.price
       if (hit && !a.triggeredAt) {
-        if (!chatId) { unlinked++; continue } // can't notify until they link Telegram
-        const res = await sendTelegram(formatAlertHit({ ...a, currentPrice: q.price }), chatId)
-        if (res.ok) { a.triggeredAt = new Date().toISOString(); dirty = true; fired++ }
+        if (!chatId && !email) { unlinked++; continue } // no channel to reach this user
+        const sent = await notifyHit(a, q.price, chatId, email)
+        if (sent) { a.triggeredAt = new Date().toISOString(); dirty = true; fired++ }
       } else if (!hit && a.triggeredAt) {
         a.triggeredAt = null; dirty = true; rearmed++ // crossed back → re-arm
       }

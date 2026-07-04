@@ -71,3 +71,7 @@ export function formatAlertHit(a) {
   const dir = a.condition === 'below' ? '🔻 BELOW' : '🔺 ABOVE'
   return `⚠️ <b>ALERT — ${a.ticker}</b>\n${dir} ${money(a.price)}\nNow: <b>${money(a.currentPrice)}</b>`
 }
+
+export function formatLogin({ email, when, device }) {
+  return `🔓 <b>Sign-in to Terminal X</b>\nAccount: ${email || '—'}\nTime: ${when}${device ? `\nDevice: ${device}` : ''}\n\nIf this wasn’t you, change your password.`
+}
