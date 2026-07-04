@@ -36,6 +36,15 @@ export async function getMacro() {
   }
 }
 
+export async function testTelegram() {
+  try {
+    const res = await fetch('/api/notify/test', { method: 'POST' })
+    return res.json()
+  } catch {
+    return { ok: false, error: 'request failed' }
+  }
+}
+
 export async function testConnectivity() {
   try {
     const res = await fetch('/api/connectivity')

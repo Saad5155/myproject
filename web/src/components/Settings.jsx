@@ -1,7 +1,7 @@
 'use client'
 import React, { useEffect, useState } from 'react'
 import { Modal } from './common'
-import { testConnectivity } from '../lib/dataEngine'
+import { testConnectivity, testTelegram } from '../lib/dataEngine'
 
 function cls(v) {
   if (!v) return 'dim'
@@ -14,8 +14,16 @@ function cls(v) {
 export default function Settings({ onClose, size, onSize }) {
   const [st, setSt] = useState({ finnhub: '…', fmp: '…', alphavantage: '…', fred: '…', aisearch: '…' })
   const [val, setVal] = useState(size)
+  const [tg, setTg] = useState(null)
+  const [tgBusy, setTgBusy] = useState(false)
 
   useEffect(() => { testConnectivity().then(setSt) }, [])
+
+  async function sendTest() {
+    setTgBusy(true); setTg(null)
+    setTg(await testTelegram())
+    setTgBusy(false)
+  }
 
   function save() {
     const n = Number(val)
@@ -32,6 +40,21 @@ export default function Settings({ onClose, size, onSize }) {
         <div className="stat"><span className="k">FRED (economy)</span><span className={`v ${cls(st.fred)}`}>{st.fred}</span></div>
         <div className="stat"><span className="k">ALPHA VANTAGE (fallback)</span><span className={`v ${cls(st.alphavantage)}`}>{st.alphavantage}</span></div>
         <div className="stat"><span className="k">AI-SEARCH (Claude)</span><span className={`v ${cls(st.aisearch)}`}>{st.aisearch}</span></div>
+      </div>
+
+      <div className="section-title">TELEGRAM ALERTS</div>
+      <div className="card" style={{ marginBottom: 12 }}>
+        <div className="dim" style={{ fontSize: 11, marginBottom: 8 }}>
+          Get price-alert pushes on your phone even when the terminal is closed.
+          Set <span className="cyan">TELEGRAM_BOT_TOKEN</span> + <span className="cyan">TELEGRAM_CHAT_ID</span> on the server, then test:
+        </div>
+        <button className="btn" onClick={sendTest} disabled={tgBusy}>{tgBusy ? 'SENDING…' : 'SEND TEST MESSAGE'}</button>
+        {tg && (
+          <div style={{ marginTop: 8, fontSize: 11 }} className={tg.ok ? 'green' : 'red'}>
+            {tg.ok ? '✓ Sent — check Telegram.' : `✕ ${tg.error}`}
+            {tg.note && <div className="amber" style={{ marginTop: 4 }}>{tg.note}</div>}
+          </div>
+        )}
       </div>
 
       <div className="field">
