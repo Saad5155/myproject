@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { getUser } from '@/lib/supabase/server'
 import { buildDeepDive } from '@/lib/server/deepdive'
 
-export const maxDuration = 300 // statements + AI gap-fill can take a while
+export const maxDuration = 60 // statements + AI gap-fill can take a while
 
 export async function POST(req) {
   const user = await getUser()

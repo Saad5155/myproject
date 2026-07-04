@@ -3,7 +3,7 @@ import { getUser } from '@/lib/supabase/server'
 import { askClaude, askClaudeWithSearch } from '@/lib/server/anthropic'
 import { isDemo, demoAI } from '@/lib/server/demo'
 
-export const maxDuration = 300 // web-search + deep-dive calls can run long
+export const maxDuration = 60 // web-search + deep-dive calls can run long
 
 export async function POST(req) {
   const user = await getUser()

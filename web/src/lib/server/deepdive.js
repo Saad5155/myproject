@@ -63,7 +63,7 @@ export async function buildDeepDive(symbol) {
         const needPeers = !report.peers.length
         const text = await askClaudeWithSearch(
           gapSpec(sym, needPeers),
-          { maxTokens: 2000, maxUses: 4, timeoutMs: 150000 }
+          { maxTokens: 2000, maxUses: 4, timeoutMs: 35000 }
         )
         const g = parseJSONLoose(text)
         if (g) {
@@ -91,22 +91,29 @@ export async function buildDeepDive(symbol) {
     return report
   }
 
-  // Full AI fallback (no AV key or throttled-out)
+  // No real statements. If an Alpha Vantage key IS configured, `fund === null`
+  // means the free tier throttled us (no-key is handled inside getFundamentals).
+  // Return a fast, friendly 503 rather than a slow AI report that would 504 on
+  // the 60s serverless limit — statements cache for a week once they land.
+  if (process.env.ALPHAVANTAGE_API_KEY) {
+    const e = new Error(`Alpha Vantage (free tier) is rate-limited right now. Give it ~60s and try ${sym} again — it then loads instantly for a week.`)
+    e.status = 503
+    throw e
+  }
+  // No AV key at all → AI-only path.
   if (!aiConfigured()) {
     const e = new Error('No data source available: set ALPHAVANTAGE_API_KEY and/or ANTHROPIC_API_KEY on the server.')
     e.status = 503
     throw e
   }
-  // Fast-fail: if no provider recognizes the symbol at all, don't burn a long
-  // AI run on a likely typo.
   if (!quote) {
-    const e = new Error(`No data source recognizes "${sym}" right now — check the ticker (or Alpha Vantage may be rate-limited; try again in a minute).`)
+    const e = new Error(`No data source recognizes "${sym}" right now — check the ticker.`)
     e.status = 404
     throw e
   }
   const text = await askClaudeWithSearch(
     `Build a complete equity research report for ${sym} using live data. Work fast — prefer fewer, broader searches. ${FULL_REPORT_SPEC}`,
-    { maxTokens: 6000, maxUses: 6, timeoutMs: 280000 }
+    { maxTokens: 6000, maxUses: 5, timeoutMs: 50000 }
   )
   const r = parseJSONLoose(text)
   if (!r || !r.ticker) { const e = new Error(`Could not assemble a report for ${sym}. Try again.`); e.status = 502; throw e }

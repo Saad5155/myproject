@@ -194,7 +194,7 @@ async function avFetch(fn, sym, extra = '') {
 // Fetch the statement set SEQUENTIALLY; on throttle, back off 25s and retry
 // (max 2 retries per call) within an overall time budget. With the 7-day cache
 // this cost is paid once per ticker per week.
-async function avStatementSequence(sym, budgetMs = 220000) {
+async function avStatementSequence(sym, budgetMs = 32000) {
   const t0 = Date.now()
   const out = {}
   const plan = [
@@ -204,8 +204,8 @@ async function avStatementSequence(sym, budgetMs = 220000) {
   for (const [key, fn] of plan) {
     let j = await avFetch(fn, sym)
     let tries = 0
-    while (j === THROTTLED && tries < 2 && Date.now() - t0 < budgetMs) {
-      await sleep(25000)
+    while (j === THROTTLED && tries < 1 && Date.now() - t0 < budgetMs) {
+      await sleep(10000)
       j = await avFetch(fn, sym)
       tries++
     }
@@ -388,10 +388,15 @@ const MACRO_BASKET = [
   { symbol: 'VIXY', label: 'VOLATILITY', group: 'vol' },
 ]
 
+// Guard so the 60s macro-tape refresh can't hammer Alpha Vantage's 25/day
+// budget: on success econ is cached 24h; on failure we don't retry for 30 min.
+let econCooldownUntil = 0
 async function getEcon() {
   const cached = await cacheGet('__ECON__', 'econ', FUND_TTL_MS)
   if (cached) return { ...cached, cached: true }
   if (!process.env.ALPHAVANTAGE_API_KEY) return { available: false }
+  if (Date.now() < econCooldownUntil) return { available: false }
+  econCooldownUntil = Date.now() + 30 * 60 * 1000
   const key = process.env.ALPHAVANTAGE_API_KEY
   const latest = async (fn, extra = '') => {
     try {

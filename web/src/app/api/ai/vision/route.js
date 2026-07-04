@@ -3,7 +3,7 @@ import { getUser } from '@/lib/supabase/server'
 import { parseScreenshot } from '@/lib/server/anthropic'
 import { isDemo, demoVision } from '@/lib/server/demo'
 
-export const maxDuration = 120
+export const maxDuration = 60
 
 export async function POST(req) {
   const user = await getUser()

@@ -12,7 +12,9 @@ export function aiConfigured() {
   return !!process.env.ANTHROPIC_API_KEY
 }
 
-async function callAnthropic(body, timeoutMs = 240000) {
+// Default under the 60s serverless cap so calls abort gracefully (catchable)
+// instead of the platform 504-ing the whole function.
+async function callAnthropic(body, timeoutMs = 52000) {
   const key = process.env.ANTHROPIC_API_KEY
   if (!key) { const e = new Error('ANTHROPIC_API_KEY not set on the server.'); e.status = 503; throw e }
   const res = await fetch(ANTHROPIC_URL, {
