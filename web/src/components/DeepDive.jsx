@@ -3,27 +3,12 @@ import {
   ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis,
   CartesianGrid, Tooltip, Legend, Cell,
 } from 'recharts'
-import { Panel, ErrBox, LoadingSequence } from './common'
+import { Panel, ErrBox, LoadingSequence, SourceBadge } from './common'
 import { ScreenerChecklist } from './Screener'
 import { evaluateScreener } from '../lib/screener'
 import { money, num, pct, compact, moneyCompact, classFor, uid, stamp } from '../lib/format'
-import { askClaudeWithSearch, parseJSONLoose, hasClaudeKey } from '../lib/claude'
 
 const CH = { green: '#2bff88', amber: '#ffb000', red: '#ff3b5c', cyan: '#35d6ff', grid: '#143b1f', text: '#5f8f70' }
-
-const REPORT_SPEC = `Return ONLY a JSON object, no prose, no code fences, with this exact shape (use null for anything unavailable):
-{"ticker":str,"name":str,"description":str (2 lines, what the company does),"sector":str,"marketCap":num,
-"price":num,"change":num,"changePct":num,"week52Low":num,"week52High":num,
-"financials":{"annual":[{"year":num,"revenue":num,"netIncome":num,"eps":num,"fcf":num,"grossMargin":num,"operatingMargin":num,"netMargin":num}] (last 5 years, oldest first),
-"quarterly":[{"period":"Q_'YY","revenue":num,"netIncome":num,"eps":num,"fcf":num}] (last 4-8 quarters, oldest first)},
-"growth":{"revenueYoY":num},
-"balance":{"cash":num,"totalDebt":num},
-"valuation":{"peTrailing":num,"peForward":num,"peg":num,"ps":num,"roe":num,"divYield":num},
-"analysts":{"consensus":str,"buy":num,"hold":num,"sell":num,"targetLow":num,"targetAvg":num,"targetHigh":num,
-"recent":[{"date":"YYYY-MM-DD","firm":str,"action":"upgrade"|"downgrade"|"initiate"|"maintain","note":str}]},
-"peers":[{"ticker":str,"name":str,"revenueGrowthPct":num,"pe":num,"netMarginPct":num}] (2-3 main competitors),
-"screener":{"peg":num,"revenueGrowthPct":num,"netIncome":num,"cash":num,"debt":num,"nextCatalyst":{"date":"YYYY-MM-DD","event":str},"targetsTrend":"raised"|"lowered"|"flat","ytdReturnPct":num}}
-All monetary values in raw USD (not millions). Revenue/netIncome/fcf/cash/debt in dollars.`
 
 const STEPS = [
   'CONNECTING TO WIRE',
@@ -67,14 +52,14 @@ export default function DeepDive({ symbol, onConsumeSymbol, research, onSaveCard
   async function run(sym) {
     const s = (sym || ticker).toUpperCase().trim()
     if (!s) return
-    if (!hasClaudeKey()) { setError('Set your Claude API key in SETTINGS.'); return }
     setBusy(true); setError(null); setReport(null); setSaved(false)
     try {
-      const text = await askClaudeWithSearch(
-        `Build a complete equity research report for ${s} using live data. ${REPORT_SPEC}`,
-        { maxTokens: 8000, maxUses: 10 }
-      )
-      const r = parseJSONLoose(text)
+      const res = await fetch('/api/deepdive', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ symbol: s }),
+      })
+      const r = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(r?.error || `Deep dive failed (${res.status})`)
       if (!r || !r.ticker) throw new Error('Could not assemble a report for ' + s + '. Try again.')
       setReport(r)
     } catch (e) { setError(e.message) } finally { setBusy(false) }
@@ -158,6 +143,7 @@ function Report({ report: r }) {
           <div className="right">
             <div className="big-num white">{money(r.price)}</div>
             <div className={classFor(r.changePct)}>{r.change != null ? money(r.change) : ''} ({pct(r.changePct)})</div>
+            {r.sources?.quote && <SourceBadge source={r.sources.quote.source} time={r.sources.quote.time} />}
           </div>
         </div>
         <div className="green" style={{ margin: '6px 0', fontSize: 12 }}>{r.description}</div>
@@ -248,7 +234,7 @@ function Report({ report: r }) {
       {/* FINANCIALS TABLE */}
       {annual.length > 0 && (
         <>
-          <div className="section-title">FINANCIALS — ANNUAL</div>
+          <div className="section-title">FINANCIALS — ANNUAL {r.sources?.financials && <SourceBadge source={r.sources.financials.source} time={r.sources.financials.time} />}</div>
           <div style={{ overflowX: 'auto' }}>
             <table className="tbl">
               <thead><tr><th>Year</th><th>Revenue</th><th>Net Inc</th><th>EPS</th><th>FCF</th><th>Gross%</th><th>Op%</th><th>Net%</th></tr></thead>
@@ -296,7 +282,7 @@ function Report({ report: r }) {
       {r.valuation && <Valuation v={r.valuation} />}
 
       {/* ANALYST DESK */}
-      {r.analysts && <AnalystDesk a={r.analysts} />}
+      {r.analysts && <AnalystDesk a={r.analysts} src={r.sources?.analysts} />}
 
       {/* PEERS */}
       {r.peers?.length > 0 && (
@@ -324,7 +310,11 @@ function Report({ report: r }) {
         </>
       )}
 
-      <div className="dim center" style={{ fontSize: 10, marginTop: 12 }}>report assembled live via AI-SEARCH · verify before trading</div>
+      <div className="dim center" style={{ fontSize: 10, marginTop: 12 }}>
+        {r.dataMode === 'hybrid'
+          ? 'financial statements: LIVE-API (Alpha Vantage) · analyst extras: AI-SEARCH · verify before trading'
+          : 'report assembled live via AI-SEARCH · verify before trading'}
+      </div>
     </div>
   )
 }
@@ -387,11 +377,11 @@ function Valuation({ v }) {
   )
 }
 
-function AnalystDesk({ a }) {
+function AnalystDesk({ a, src }) {
   const actColor = { upgrade: 'green', downgrade: 'red', initiate: 'cyan', maintain: 'dim' }
   return (
     <>
-      <div className="section-title">ANALYST DESK</div>
+      <div className="section-title">ANALYST DESK {src && <SourceBadge source={src.source} time={src.time} />}</div>
       <div className="grid2" style={{ marginBottom: 6 }}>
         <div className="stat"><span className="k">CONSENSUS</span><span className="v amber bold">{a.consensus || '—'}</span></div>
         <div className="stat"><span className="k">RATINGS</span><span className="v"><span className="green">{a.buy ?? '—'}B</span> / <span className="dim">{a.hold ?? '—'}H</span> / <span className="red">{a.sell ?? '—'}S</span></span></div>

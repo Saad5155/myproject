@@ -4,6 +4,16 @@ import { NextResponse } from 'next/server'
 // Refreshes the Supabase session on every request and guards the app.
 // Unauthenticated users are redirected to /login (except public paths + auth API).
 export async function middleware(request) {
+  // DEMO MODE: no Supabase, no auth — everything is canned and in-memory.
+  if (process.env.DEMO_MODE === 'true') {
+    if (request.nextUrl.pathname.startsWith('/login')) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/'
+      return NextResponse.redirect(url)
+    }
+    return NextResponse.next({ request })
+  }
+
   let response = NextResponse.next({ request })
 
   const supabase = createServerClient(

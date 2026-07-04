@@ -242,8 +242,8 @@ export default function Page() {
         <span className="dim" style={{ fontSize: 10 }}>on-demand · not streaming</span>
         <span className="spacer" />
         <button className="btn amber" onClick={() => setShowBrief(true)}>☀ MORNING BRIEF</button>
-        <button className="iconbtn" onClick={() => setShowSettings(true)} aria-label="Settings" title="Settings (F8)">⚙</button>
-        <button className="iconbtn" onClick={signOut} aria-label="Sign out" title="Sign out">⎋</button>
+        <button className="iconbtn" onClick={() => setShowSettings(true)} aria-label="Settings" title="Settings (F8)">CFG</button>
+        <button className="iconbtn" onClick={signOut} aria-label="Sign out" title="Sign out">EXIT</button>
         <Clock />
       </div>
 
@@ -274,8 +274,8 @@ export default function Page() {
             <CommandLine className="col-4 row-2" />
             {deepEl('col-4 row-2')}
             <NewsWire className="col-6" tickers={tickers} news={state.news} setNews={setNews} />
-            <Screener className="col-3" />
-            <Calendar className="col-3" tickers={tickers} calendar={state.calendar} setCalendar={setCalendar} />
+            <Screener className="col-6" />
+            <Calendar className="col-6" tickers={tickers} calendar={state.calendar} setCalendar={setCalendar} />
             <Alerts className="col-6" alerts={state.alerts} setAlerts={setAlerts} lastCheck={lastCheck} />
           </div>
         )}

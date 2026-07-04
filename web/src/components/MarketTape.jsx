@@ -10,7 +10,11 @@ function Item({ it }) {
       <span className="dim">{it.label}</span>{' '}
       <span className="white">{it.price != null ? num(it.price) : '—'}</span>{' '}
       <span className={classFor(it.changePct)}>{arrow} {it.changePct != null ? pct(it.changePct) : ''}</span>
-      {it.source && <span className={`src ${it.source === 'LIVE-API' ? 'live' : 'ai'}`}>{it.source === 'LIVE-API' ? 'LIVE' : 'AI'}</span>}
+      {it.source && (
+        <span className={`src ${it.source === 'LIVE-API' ? 'live' : it.source === 'AI-SEARCH' ? 'ai' : 'stale'}`}>
+          {it.source === 'LIVE-API' ? 'LIVE' : it.source === 'AI-SEARCH' ? 'AI' : it.source}
+        </span>
+      )}
     </span>
   )
 }

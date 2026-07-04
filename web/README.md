@@ -13,6 +13,12 @@ navigation on mobile, installable as a PWA.
   - `/api/state`, `/api/research-cards` → Supabase persistence
 - **Data engine**: Finnhub (quotes/profiles) → Alpha Vantage (fundamentals/econ) → Claude web-search
   fallback. Every datum is badged `[LIVE-API]` or `[AI-SEARCH]` with a timestamp.
+- **Real financial statements**: the deep dive pulls actual filings data from Alpha Vantage
+  (INCOME_STATEMENT, BALANCE_SHEET, CASH_FLOW, EARNINGS, OVERVIEW, EARNINGS_CALENDAR) — 5 years
+  annual + 8 quarters, margins computed from the statements, real analyst rating counts, real
+  52-week range. Claude web-search fills only what free APIs lack (target low/high, rating
+  actions, upcoming catalysts, peer metrics), each section badged with its source. One deep dive
+  = 6 AV calls cached 24h (free tier 25/day → ~4 fresh tickers/day; repeats are free).
 - **Macro tape**: live index / commodity / bond proxies (SPY·QQQ·DIA·IWM·USO·GLD·TLT·VIXY) +
   Alpha Vantage economic indicators (10Y yield, Fed funds, CPI, unemployment, WTI).
 - **Cache**: Supabase `quote_cache` — quotes 60s, fundamentals/econ 24h (keeps you inside free tiers).
@@ -49,6 +55,15 @@ npm install
 npm run dev      # http://localhost:3000
 # or: npm run build && npm run start
 ```
+
+### Zero-setup demo
+Try the whole terminal with **no keys and no Supabase**:
+```bash
+DEMO_MODE=true npm run dev
+```
+Auth is bypassed, state is in-memory, market/AI data is canned (badged `DEMO`); the deep-dive
+demo report is built from real IBM statements so charts and tables show genuine shapes.
+Never set `DEMO_MODE` in production.
 
 Deploy to **Vercel**: import the repo, set the same env vars, deploy. `maxDuration` is set on the
 AI routes for long web-search / deep-dive calls (raise the Vercel function limit if needed).

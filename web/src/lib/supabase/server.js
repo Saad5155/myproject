@@ -31,6 +31,7 @@ export function createServiceSupabase() {
 
 // Helper: return the authenticated user or null.
 export async function getUser() {
+  if (process.env.DEMO_MODE === 'true') return { id: '00000000-0000-0000-0000-00000000demo', email: 'demo@terminal-x' }
   const sb = createServerSupabase()
   const { data } = await sb.auth.getUser()
   return data?.user || null

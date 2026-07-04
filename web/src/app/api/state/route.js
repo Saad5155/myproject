@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server'
 import { createServerSupabase } from '@/lib/supabase/server'
+import { isDemo, demoStore } from '@/lib/server/demo'
 
 // app_state holds a single JSON blob per user:
 // { portfolio, alerts, watchlist, settings, news, calendar }
 export async function GET() {
+  if (isDemo()) return NextResponse.json(demoStore.state)
   const sb = createServerSupabase()
   const { data: { user } } = await sb.auth.getUser()
   if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
@@ -13,6 +15,10 @@ export async function GET() {
 }
 
 export async function PUT(req) {
+  if (isDemo()) {
+    demoStore.state = await req.json()
+    return NextResponse.json({ ok: true, demo: true })
+  }
   const sb = createServerSupabase()
   const { data: { user } } = await sb.auth.getUser()
   if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })

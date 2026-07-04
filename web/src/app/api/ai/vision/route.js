@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getUser } from '@/lib/supabase/server'
 import { parseScreenshot } from '@/lib/server/anthropic'
+import { isDemo, demoVision } from '@/lib/server/demo'
 
 export const maxDuration = 120
 
@@ -10,6 +11,7 @@ export async function POST(req) {
   try {
     const { base64, mediaType } = await req.json()
     if (!base64) return NextResponse.json({ error: 'image required' }, { status: 400 })
+    if (isDemo()) return NextResponse.json({ result: demoVision() })
     const result = await parseScreenshot(base64, mediaType || 'image/png')
     return NextResponse.json({ result })
   } catch (e) {
