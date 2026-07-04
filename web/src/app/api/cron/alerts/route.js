@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { createServiceSupabase } from '@/lib/supabase/server'
 import { getQuotes } from '@/lib/server/providers'
-import { sendTelegram, formatAlertHit, telegramConfigured } from '@/lib/server/telegram'
+import { sendTelegram, formatAlertHit, telegramBotConfigured } from '@/lib/server/telegram'
+import { allTelegramLinks } from '@/lib/server/telegramLinks'
 
 export const maxDuration = 60
 
@@ -19,20 +20,26 @@ export async function GET(req) {
   const provided = url.searchParams.get('secret') || (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '')
   if (provided !== secret) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
 
-  if (!telegramConfigured()) {
-    return NextResponse.json({ ok: false, skipped: 'telegram not configured' })
+  if (!telegramBotConfigured()) {
+    return NextResponse.json({ ok: false, skipped: 'telegram bot not configured' })
   }
 
   const sb = createServiceSupabase()
-  const { data: rows, error } = await sb.from('app_state').select('user_id, data')
+  const [{ data: rows, error }, links] = await Promise.all([
+    sb.from('app_state').select('user_id, data'),
+    allTelegramLinks(),
+  ])
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  let checked = 0, fired = 0, rearmed = 0
+  let checked = 0, fired = 0, rearmed = 0, unlinked = 0
   for (const row of rows || []) {
     const state = row.data || {}
     const alerts = Array.isArray(state.alerts) ? state.alerts : []
     const armed = alerts.filter((a) => a.active)
     if (!armed.length) continue
+
+    // Each user's alerts go to THEIR own linked Telegram chat.
+    const chatId = links[row.user_id]
 
     const symbols = [...new Set(armed.map((a) => a.ticker))]
     const quotes = await getQuotes(symbols)
@@ -45,7 +52,8 @@ export async function GET(req) {
       if (!q || q.error || q.price == null) continue
       const hit = a.condition === 'below' ? q.price <= a.price : q.price >= a.price
       if (hit && !a.triggeredAt) {
-        const res = await sendTelegram(formatAlertHit({ ...a, currentPrice: q.price }))
+        if (!chatId) { unlinked++; continue } // can't notify until they link Telegram
+        const res = await sendTelegram(formatAlertHit({ ...a, currentPrice: q.price }), chatId)
         if (res.ok) { a.triggeredAt = new Date().toISOString(); dirty = true; fired++ }
       } else if (!hit && a.triggeredAt) {
         a.triggeredAt = null; dirty = true; rearmed++ // crossed back → re-arm
@@ -57,5 +65,5 @@ export async function GET(req) {
     }
   }
 
-  return NextResponse.json({ ok: true, checked, fired, rearmed })
+  return NextResponse.json({ ok: true, checked, fired, rearmed, unlinked })
 }

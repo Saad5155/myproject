@@ -36,6 +36,16 @@ export async function getMacro() {
   }
 }
 
+export async function getTelegramStatus() {
+  try {
+    const res = await fetch('/api/notify/test')
+    if (!res.ok) throw new Error('status failed')
+    return res.json()
+  } catch {
+    return { botConfigured: false, linked: false }
+  }
+}
+
 export async function testTelegram() {
   try {
     const res = await fetch('/api/notify/test', { method: 'POST' })

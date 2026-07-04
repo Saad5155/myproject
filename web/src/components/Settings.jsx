@@ -1,7 +1,7 @@
 'use client'
 import React, { useEffect, useState } from 'react'
 import { Modal } from './common'
-import { testConnectivity, testTelegram } from '../lib/dataEngine'
+import { testConnectivity, testTelegram, getTelegramStatus } from '../lib/dataEngine'
 
 function cls(v) {
   if (!v) return 'dim'
@@ -16,13 +16,17 @@ export default function Settings({ onClose, size, onSize }) {
   const [val, setVal] = useState(size)
   const [tg, setTg] = useState(null)
   const [tgBusy, setTgBusy] = useState(false)
+  const [tgStatus, setTgStatus] = useState(null)
 
   useEffect(() => { testConnectivity().then(setSt) }, [])
+  useEffect(() => { getTelegramStatus().then(setTgStatus) }, [])
 
   async function sendTest() {
     setTgBusy(true); setTg(null)
-    setTg(await testTelegram())
+    const r = await testTelegram()
+    setTg(r)
     setTgBusy(false)
+    if (r.ok || r.needsLink) getTelegramStatus().then(setTgStatus)
   }
 
   function save() {
@@ -44,15 +48,32 @@ export default function Settings({ onClose, size, onSize }) {
 
       <div className="section-title">TELEGRAM ALERTS</div>
       <div className="card" style={{ marginBottom: 12 }}>
-        <div className="dim" style={{ fontSize: 11, marginBottom: 8 }}>
-          Get price-alert pushes on your phone even when the terminal is closed.
-          Set <span className="cyan">TELEGRAM_BOT_TOKEN</span> + <span className="cyan">TELEGRAM_CHAT_ID</span> on the server, then test:
-        </div>
-        <button className="btn" onClick={sendTest} disabled={tgBusy}>{tgBusy ? 'SENDING…' : 'SEND TEST MESSAGE'}</button>
+        {tgStatus && !tgStatus.botConfigured ? (
+          <div className="dim" style={{ fontSize: 11 }}>
+            Telegram isn&apos;t set up on the server yet. Once <span className="cyan">TELEGRAM_BOT_TOKEN</span> is configured,
+            you&apos;ll be able to connect your phone here.
+          </div>
+        ) : tgStatus?.linked ? (
+          <>
+            <div className="green" style={{ fontSize: 12, marginBottom: 8 }}>● CONNECTED — alerts go to your Telegram.</div>
+            <button className="btn" onClick={sendTest} disabled={tgBusy}>{tgBusy ? 'SENDING…' : 'SEND TEST MESSAGE'}</button>
+          </>
+        ) : (
+          <>
+            <div className="dim" style={{ fontSize: 11, marginBottom: 8 }}>
+              Get price-alert pushes on your phone even when the terminal is closed. To connect:
+            </div>
+            <ol style={{ fontSize: 11, margin: '0 0 8px 16px', padding: 0, lineHeight: 1.7 }}>
+              <li>Open Telegram and message {tgStatus?.bot ? <span className="cyan">@{tgStatus.bot}</span> : 'your terminal bot'}</li>
+              <li>Send your account email: <span className="amber">{tgStatus?.email || 'your login email'}</span></li>
+              <li>Come back and press <span className="cyan">Send test</span></li>
+            </ol>
+            <button className="btn" onClick={sendTest} disabled={tgBusy}>{tgBusy ? 'CHECKING…' : 'SEND TEST MESSAGE'}</button>
+          </>
+        )}
         {tg && (
-          <div style={{ marginTop: 8, fontSize: 11 }} className={tg.ok ? 'green' : 'red'}>
-            {tg.ok ? '✓ Sent — check Telegram.' : `✕ ${tg.error}`}
-            {tg.note && <div className="amber" style={{ marginTop: 4 }}>{tg.note}</div>}
+          <div style={{ marginTop: 8, fontSize: 11 }} className={tg.ok ? 'green' : 'amber'}>
+            {tg.ok ? '✓ Sent — check Telegram.' : `${tg.error}`}
           </div>
         )}
       </div>

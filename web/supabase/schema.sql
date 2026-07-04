@@ -38,5 +38,21 @@ create table if not exists public.quote_cache (
 );
 alter table public.quote_cache enable row level security;
 
--- NOTE: create your single user in Supabase → Authentication → Users (Add user,
--- email + password). Or enable email sign-up and register once from /login.
+-- 4) Telegram notification links — maps each user to their Telegram chat.
+--    Written by the bot webhook (service role) when a user messages the bot
+--    their account email; read by the alert cron. Kept out of app_state so a
+--    client state-save can never overwrite it.
+create table if not exists public.telegram_links (
+  user_id    uuid primary key references auth.users(id) on delete cascade,
+  chat_id    text not null,
+  email      text,
+  linked_at  timestamptz not null default now()
+);
+alter table public.telegram_links enable row level security;
+drop policy if exists "own telegram_link" on public.telegram_links;
+create policy "own telegram_link" on public.telegram_links
+  for select using (auth.uid() = user_id);
+-- writes happen only via the service role (webhook), which bypasses RLS.
+
+-- NOTE: create users in Supabase → Authentication → Users (Add user, email +
+-- password). You control who gets an account — there is no public sign-up.

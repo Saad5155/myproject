@@ -1,40 +1,40 @@
 import { NextResponse } from 'next/server'
 import { getUser } from '@/lib/supabase/server'
-import { sendTelegram, discoverChatId, telegramBotConfigured } from '@/lib/server/telegram'
+import { sendTelegram, telegramBotConfigured } from '@/lib/server/telegram'
+import { getTelegramLink } from '@/lib/server/telegramLinks'
 
 export const maxDuration = 20
 
-// POST /api/notify/test — sends a "connected" message so the user can verify
-// Telegram works, and surfaces their chat_id if TELEGRAM_CHAT_ID isn't set yet.
+// GET  /api/notify/test — report this user's Telegram link status + bot handle.
+// POST /api/notify/test — send a test message to this user's linked chat.
+export async function GET() {
+  const user = await getUser()
+  if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+  const link = telegramBotConfigured() ? await getTelegramLink(user.id) : null
+  return NextResponse.json({
+    botConfigured: telegramBotConfigured(),
+    bot: process.env.TELEGRAM_BOT_USERNAME || null,
+    linked: !!link,
+    email: user.email || null,
+  })
+}
+
 export async function POST() {
   const user = await getUser()
   if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
-
   if (!telegramBotConfigured()) {
-    return NextResponse.json({ ok: false, error: 'TELEGRAM_BOT_TOKEN not set on the server.' })
+    return NextResponse.json({ ok: false, error: 'Telegram bot not set up on the server yet.' })
   }
-
-  let chatId = process.env.TELEGRAM_CHAT_ID
-  let discovered = null
-  if (!chatId) {
-    discovered = await discoverChatId()
-    chatId = discovered
-    if (!chatId) {
-      return NextResponse.json({
-        ok: false,
-        error: 'TELEGRAM_CHAT_ID not set. Open Telegram, send any message to your bot, then press "Send test" again.',
-      })
-    }
+  const link = await getTelegramLink(user.id)
+  if (!link) {
+    const bot = process.env.TELEGRAM_BOT_USERNAME
+    return NextResponse.json({
+      ok: false,
+      needsLink: true,
+      error: `Not linked yet. Open Telegram${bot ? `, message @${bot}` : ' and message your bot'}, and send your account email: ${user.email}`,
+    })
   }
-
-  const res = await sendTelegram(
-    '✅ <b>Terminal connected.</b>\nPrice alerts will arrive here.',
-    chatId
-  )
+  const res = await sendTelegram('✅ <b>Test alert.</b> Your terminal notifications are working.', link.chat_id)
   if (!res.ok) return NextResponse.json({ ok: false, error: res.error })
-
-  return NextResponse.json({
-    ok: true,
-    ...(discovered ? { chatId: discovered, note: `Add TELEGRAM_CHAT_ID=${discovered} to your server env to make it permanent.` } : {}),
-  })
+  return NextResponse.json({ ok: true })
 }

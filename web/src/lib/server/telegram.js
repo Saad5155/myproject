@@ -29,6 +29,23 @@ export async function sendTelegram(text, chatId = process.env.TELEGRAM_CHAT_ID) 
   } catch (e) { return { ok: false, error: e.message } }
 }
 
+// Register the webhook so Telegram delivers messages to our route. Owner runs
+// this once (via /api/telegram/setup). secretToken is echoed back by Telegram
+// in the X-Telegram-Bot-Api-Secret-Token header so we can verify authenticity.
+export async function setWebhook(url, secretToken) {
+  const token = process.env.TELEGRAM_BOT_TOKEN
+  if (!token) return { ok: false, error: 'TELEGRAM_BOT_TOKEN not set' }
+  try {
+    const r = await fetch(`${API}/bot${token}/setWebhook`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ url, secret_token: secretToken, allowed_updates: ['message'], drop_pending_updates: true }),
+    })
+    const j = await r.json()
+    return j.ok ? { ok: true } : { ok: false, error: j.description || 'setWebhook failed' }
+  } catch (e) { return { ok: false, error: e.message } }
+}
+
 // Discover the chat_id: the user DMs the bot once, then we read the most recent
 // update. Lets the app show "your chat id is 12345 — add it to TELEGRAM_CHAT_ID".
 export async function discoverChatId() {
