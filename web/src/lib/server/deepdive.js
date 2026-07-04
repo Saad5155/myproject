@@ -91,15 +91,22 @@ export async function buildDeepDive(symbol) {
     return report
   }
 
-  // Full AI fallback (no AV key or rate-limited)
+  // Full AI fallback (no AV key or throttled-out)
   if (!aiConfigured()) {
     const e = new Error('No data source available: set ALPHAVANTAGE_API_KEY and/or ANTHROPIC_API_KEY on the server.')
     e.status = 503
     throw e
   }
+  // Fast-fail: if no provider recognizes the symbol at all, don't burn a long
+  // AI run on a likely typo.
+  if (!quote) {
+    const e = new Error(`No data source recognizes "${sym}" right now — check the ticker (or Alpha Vantage may be rate-limited; try again in a minute).`)
+    e.status = 404
+    throw e
+  }
   const text = await askClaudeWithSearch(
-    `Build a complete equity research report for ${sym} using live data. ${FULL_REPORT_SPEC}`,
-    { maxTokens: 8000, maxUses: 10 }
+    `Build a complete equity research report for ${sym} using live data. Work fast — prefer fewer, broader searches. ${FULL_REPORT_SPEC}`,
+    { maxTokens: 6000, maxUses: 6, timeoutMs: 280000 }
   )
   const r = parseJSONLoose(text)
   if (!r || !r.ticker) { const e = new Error(`Could not assemble a report for ${sym}. Try again.`); e.status = 502; throw e }

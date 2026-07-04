@@ -13,19 +13,31 @@ export const AI = 'AI-SEARCH'
 
 const QUOTE_TTL_MS = 60 * 1000
 const FUND_TTL_MS = 24 * 60 * 60 * 1000
+const STMT_TTL_MS = 7 * 24 * 60 * 60 * 1000 // statements change quarterly; 7d keeps AV budget sane
 
 function now() { return new Date().toISOString() }
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
-// ---- cache helpers (shared quote_cache table, service-role access) ----
+// ---- cache helpers ----
+// L1: in-memory (per serverless instance / local dev without Supabase)
+// L2: shared quote_cache table (service-role access)
+const memCache = new Map()
 async function cacheGet(symbol, kind, ttlMs) {
+  const k = symbol + '|' + kind
+  const m = memCache.get(k)
+  if (m && Date.now() - m.at < ttlMs) return m.data
   try {
     const sb = createServiceSupabase()
     const { data } = await sb.from('quote_cache').select('data, updated_at').eq('symbol', symbol).eq('kind', kind).maybeSingle()
-    if (data && data.updated_at && Date.now() - new Date(data.updated_at).getTime() < ttlMs) return data.data
+    if (data && data.updated_at && Date.now() - new Date(data.updated_at).getTime() < ttlMs) {
+      memCache.set(k, { data: data.data, at: new Date(data.updated_at).getTime() })
+      return data.data
+    }
   } catch { /* cache miss on error */ }
   return null
 }
 async function cacheSet(symbol, kind, data) {
+  memCache.set(symbol + '|' + kind, { data, at: Date.now() })
   try {
     const sb = createServiceSupabase()
     await sb.from('quote_cache').upsert({ symbol, kind, data, updated_at: now() }, { onConflict: 'symbol,kind' })
@@ -164,17 +176,50 @@ const num = (v) => {
 const pctFrac = (v) => { const x = num(v); return x == null ? null : Math.round(x * 1000) / 10 } // 0.358 → 35.8
 const round1 = (x) => (x == null ? null : Math.round(x * 10) / 10)
 
+// Raw AV fetch. Distinguishes hard failure (null) from throttling (THROTTLED)
+// so the paced sequence can back off and retry.
+const THROTTLED = Symbol('av-throttled')
 async function avFetch(fn, sym, extra = '') {
   try {
     const r = await fetch(`${ALPHA}?function=${fn}&symbol=${sym}${extra}&apikey=${process.env.ALPHAVANTAGE_API_KEY}`)
     if (!r.ok) return null
     const j = await r.json()
-    if (!j || j.Note || j.Information || j['Error Message']) return null
+    if (!j || j['Error Message']) return null
+    if (j.Note || j.Information) return THROTTLED
     return j
   } catch { return null }
 }
 
+// AV free tier throttles bursts hard (observed: back-to-back calls rejected).
+// Fetch the statement set SEQUENTIALLY; on throttle, back off 25s and retry
+// (max 2 retries per call) within an overall time budget. With the 7-day cache
+// this cost is paid once per ticker per week.
+async function avStatementSequence(sym, budgetMs = 220000) {
+  const t0 = Date.now()
+  const out = {}
+  const plan = [
+    ['ov', 'OVERVIEW'], ['inc', 'INCOME_STATEMENT'], ['bs', 'BALANCE_SHEET'],
+    ['cf', 'CASH_FLOW'], ['earn', 'EARNINGS'],
+  ]
+  for (const [key, fn] of plan) {
+    let j = await avFetch(fn, sym)
+    let tries = 0
+    while (j === THROTTLED && tries < 2 && Date.now() - t0 < budgetMs) {
+      await sleep(25000)
+      j = await avFetch(fn, sym)
+      tries++
+    }
+    out[key] = j === THROTTLED ? null : j
+    // the two load-bearing calls — bail early if they can't be had
+    if (key === 'ov' && !out.ov) return out
+    if (key === 'inc' && !out.inc) return out
+    await sleep(1200) // gentle pacing between successful calls
+  }
+  return out
+}
+
 // EARNINGS_CALENDAR returns CSV: symbol,name,reportDate,fiscalDateEnding,estimate,currency,timeOfTheDay
+// Single attempt, optional — never retried.
 async function avNextEarnings(sym) {
   try {
     const r = await fetch(`${ALPHA}?function=EARNINGS_CALENDAR&symbol=${sym}&horizon=3month&apikey=${process.env.ALPHAVANTAGE_API_KEY}`)
@@ -219,19 +264,17 @@ async function finnhubMetrics(sym) {
 export async function getFundamentals(symbol) {
   const sym = symbol.toUpperCase().trim()
   if (!process.env.ALPHAVANTAGE_API_KEY) return null
-  const cached = await cacheGet(sym, 'fundamentals', FUND_TTL_MS)
+  const cached = await cacheGet(sym, 'fundamentals', STMT_TTL_MS)
   if (cached) return { ...cached, cached: true }
 
-  const [ov, inc, bs, cf, earn, nextEarnings, peers] = await Promise.all([
-    avFetch('OVERVIEW', sym),
-    avFetch('INCOME_STATEMENT', sym),
-    avFetch('BALANCE_SHEET', sym),
-    avFetch('CASH_FLOW', sym),
-    avFetch('EARNINGS', sym),
-    avNextEarnings(sym),
+  // Finnhub calls are fast and generous (60/min) — run in parallel with the
+  // paced Alpha Vantage statement sequence.
+  const [{ ov, inc, bs, cf, earn }, peers] = await Promise.all([
+    avStatementSequence(sym),
     finnhubPeers(sym),
   ])
-  if (!ov?.Symbol || !inc?.annualReports?.length) return null // rate-limited or unknown symbol
+  if (!ov?.Symbol || !inc?.annualReports?.length) return null // throttled-out or unknown symbol
+  const nextEarnings = await avNextEarnings(sym)
 
   // peer metrics via free Finnhub basic financials (fast, no AI needed)
   const peerRows = await Promise.all((peers || []).map(async (p) => {
@@ -358,26 +401,39 @@ async function getEcon() {
       return d ? { value: Number(d.value), date: d.date } : null
     } catch { return null }
   }
-  const [fedFunds, cpi, treasury10y, unemployment, wti] = await Promise.all([
-    latest('FEDERAL_FUNDS_RATE', '&interval=monthly'),
-    latest('CPI', '&interval=monthly'),
-    latest('TREASURY_YIELD', '&interval=monthly&maturity=10year'),
-    latest('UNEMPLOYMENT'),
-    latest('WTI', '&interval=monthly'),
-  ])
-  const econ = { available: true, fedFunds, cpi, treasury10y, unemployment, wti, source: LIVE, time: now() }
+  // Sequential, single attempt each (AV free tier rejects bursts). Whatever
+  // succeeds is shown; an all-null result is NOT cached so the next app open retries.
+  const plan = [
+    ['fedFunds', 'FEDERAL_FUNDS_RATE', '&interval=monthly'],
+    ['cpi', 'CPI', '&interval=monthly'],
+    ['treasury10y', 'TREASURY_YIELD', '&interval=monthly&maturity=10year'],
+    ['unemployment', 'UNEMPLOYMENT', ''],
+    ['wti', 'WTI', '&interval=monthly'],
+  ]
+  const vals = {}
+  for (const [k, fn, extra] of plan) {
+    vals[k] = await latest(fn, extra)
+    await sleep(1200)
+  }
+  if (!Object.values(vals).some(Boolean)) return { available: false }
+  const econ = { available: true, ...vals, source: LIVE, time: now() }
   await cacheSet('__ECON__', 'econ', econ)
   return econ
 }
 
 export async function getMarketSnapshot() {
   if (isDemo()) return demoMacro()
-  const quotes = await getQuotes(MACRO_BASKET.map((b) => b.symbol))
-  const items = MACRO_BASKET.map((b) => {
-    const q = quotes[b.symbol]
-    const ok = q && !q.error
-    return { symbol: b.symbol, label: b.label, group: b.group, price: ok ? q.price : null, changePct: ok ? q.changePct : null, source: ok ? q.source : null, time: q?.time || null }
-  })
+  // The tape refreshes every 60s — only pull the 8-symbol basket when Finnhub
+  // (60 calls/min) is configured. Never burn AV budget or slow AI searches on it.
+  let items = MACRO_BASKET.map((b) => ({ symbol: b.symbol, label: b.label, group: b.group, price: null, changePct: null, source: null, time: null }))
+  if (process.env.FINNHUB_API_KEY) {
+    const quotes = await getQuotes(MACRO_BASKET.map((b) => b.symbol))
+    items = MACRO_BASKET.map((b) => {
+      const q = quotes[b.symbol]
+      const ok = q && !q.error
+      return { symbol: b.symbol, label: b.label, group: b.group, price: ok ? q.price : null, changePct: ok ? q.changePct : null, source: ok ? q.source : null, time: q?.time || null }
+    })
+  }
   const econ = await getEcon()
   return { items, econ, time: now() }
 }
